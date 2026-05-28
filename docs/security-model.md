@@ -114,7 +114,7 @@ has no network attack surface at all.
 ## Where secrets live (and don't)
 
 The browser is strict about token storage. From the app
-([`apps/menagerie/index.html`](../apps/menagerie/index.html)):
+([`index.html`](../index.html)):
 
 - **Registration tokens** are persisted only in `relays.json` inside the
   **workspace folder you grant via the File System Access API** — a directory
@@ -133,7 +133,7 @@ The relay side keeps `relay.toml` — which holds the registration token — at
 ## Content Security Policy
 
 The app ships a strict CSP as a `<meta http-equiv>` tag
-([`index.html`](../apps/menagerie/index.html)):
+([`index.html`](../index.html)):
 
 ```
 default-src 'self';

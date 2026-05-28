@@ -43,7 +43,7 @@ All relays speak the same protocol; the browser is agnostic to relay flavor.
 
 ```
 protocol/        WebSocket protocol spec — the durable artifact (protocol.md + types.ts)
-apps/menagerie/  Single-file browser app (index.html, no build step)
+index.html       Single-file browser app at the repo root (no build step)
 relay-go/        Reference relay: single Go binary
 docs/            quickstart · relay-setup · writing-a-shim · security-model
 ```

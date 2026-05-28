@@ -143,7 +143,7 @@ allowed_origins = ["https://menagerie.naklitechie.com"]
 ```
 
 To run the app from a local static server during development (e.g.
-`python3 -m http.server 8000` in `apps/menagerie/`), add that origin:
+`python3 -m http.server 8000` from the repo root), add that origin:
 
 ```toml
 allowed_origins = ["https://menagerie.naklitechie.com", "http://localhost:8000"]

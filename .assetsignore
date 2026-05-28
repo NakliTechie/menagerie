@@ -1,0 +1,5 @@
+# Menagerie is a monorepo but only the single-file app is public.
+# Default-deny everything, then re-include just index.html, so a Cloudflare
+# deploy never exposes relay-go/, protocol/, docs/, etc.
+/*
+!/index.html

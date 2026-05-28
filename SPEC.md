@@ -17,7 +17,7 @@ A browser-native control console for fleets of coding agents. One single-file HT
 
 ## Locked decisions (v1.0)
 
-- **Monorepo** — `protocol/` + `apps/menagerie/` + `relay-go/` + `docs/` in one repo; no splits through v1.1 (handoff §2).
+- **Monorepo** — `protocol/` + `relay-go/` + `docs/` + the app's root `index.html` in one repo; no splits through v1.1. (Handoff §2 placed the app at `apps/menagerie/`; moved to the repo root 2026-05-28 for a clean static deploy.)
 - **Protocol is the durable artifact** — written first, before relay or app (handoff §4, §17).
 - **Browser app** — single `index.html`, no build step, xterm.js via CDN with SRI; state in FSA + IndexedDB only (handoff §6, §13).
 - **Relay** — single Go binary; deps limited to `creack/pty` + `coder/websocket` + `BurntSushi/toml` (handoff §3).

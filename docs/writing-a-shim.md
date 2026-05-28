@@ -7,7 +7,7 @@ command line that launches it, and how to read its output for activity signals
 > **Hard rule (handoff §13 #6):** all per-agent logic lives on the relay, in a
 > shim — **never** in the browser. The browser app is a vendor-neutral viewer;
 > it knows agents only by the id strings the relay advertises in `hello`. If you
-> find yourself special-casing an agent in `apps/menagerie/index.html`, stop:
+> find yourself special-casing an agent in `index.html`, stop:
 > the difference belongs in a shim.
 
 Shims live in [`../relay-go/internal/shims/`](../relay-go/internal/shims/). v1.0

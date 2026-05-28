@@ -1,11 +1,11 @@
 {
-  // Menagerie is a single static HTML file served as Cloudflare static assets.
-  // `npx wrangler deploy` (Cloudflare's default) uploads ./apps/menagerie as
-  // assets — there is no Worker script, just files.
+  // Menagerie is a single static HTML file (index.html at the repo root) served
+  // as Cloudflare static assets — no Worker script, just files. `.assetsignore`
+  // restricts the upload to index.html so the monorepo source isn't exposed.
   "name": "menagerie",
   "compatibility_date": "2026-05-28",
   "assets": {
-    "directory": "./apps/menagerie",
+    "directory": ".",
     "not_found_handling": "single-page-application"
   }
 }

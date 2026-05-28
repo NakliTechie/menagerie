@@ -53,11 +53,10 @@ origins. Leave it running.
 ## 4. Open the app
 
 The eventual home is the hosted single-file app at
-**menagerie.naklitechie.com**. Until that deploy lands, serve
-`apps/menagerie/` locally — in another terminal:
+**menagerie.naklitechie.com**. Until that deploy lands, serve it
+locally from the repo root — in another terminal:
 
 ```sh
-cd apps/menagerie
 python3 -m http.server 8000
 ```
 
