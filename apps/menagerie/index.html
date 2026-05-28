@@ -66,7 +66,7 @@
     .s-lost { background: var(--red); box-shadow: none; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    .tile.fullscreen { position: fixed; inset: 12px; height: auto; z-index: 60; box-shadow: 0 24px 64px rgba(0,0,0,.6); }
+    .tile.fullscreen { position: fixed; inset: 0; height: auto; z-index: 60; border-radius: 0; }
     .tile-head[draggable="true"] { cursor: grab; }
     .tile-head[draggable="true"]:active { cursor: grabbing; }
     .tile.dragging { opacity: .45; }
@@ -485,10 +485,12 @@
       const title = document.createElement("span"); title.className = "tile-title";
       title.innerHTML = `${escapeHtml(sess.agent)} <span class="sub">· ${escapeHtml(sess.relayName)} · <span class="timer">00:00</span></span>`;
       const spacer = document.createElement("span"); spacer.className = "spacer";
+      const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen (click to toggle)"; full.setAttribute("aria-label", "Toggle fullscreen"); full.textContent = "⛶";
+      full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
       const kill = document.createElement("button"); kill.className = "btn icon ghost"; kill.title = "Kill"; kill.setAttribute("aria-label", "Kill agent"); kill.textContent = "🗑";
       kill.addEventListener("click", () => signal(sess, "kill"));
-      head.append(dot, title, spacer, kill);
-      head.addEventListener("click", (e) => { if (e.target !== kill) focusTile(sess); });
+      head.append(dot, title, spacer, full, kill);
+      head.addEventListener("click", (e) => { if (e.target !== kill && e.target !== full) focusTile(sess); });
       head.addEventListener("dblclick", (e) => { if (e.target !== kill) toggleFullscreen(tile); });
       makeDraggable(tile, head);
       const termEl = document.createElement("div"); termEl.className = "tile-term";
@@ -568,9 +570,11 @@
       const title = document.createElement("span"); title.className = "tile-title";
       title.innerHTML = `${escapeHtml(r.agent)} <span class="sub">· ${escapeHtml(r.relayName)} · replay</span>`;
       const spacer = document.createElement("span"); spacer.className = "spacer";
+      const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen (click to toggle)"; full.setAttribute("aria-label", "Toggle fullscreen"); full.textContent = "⛶";
+      full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
       const close = document.createElement("button"); close.className = "btn icon ghost"; close.title = "Close"; close.setAttribute("aria-label", "Close replay"); close.textContent = "✕";
       close.addEventListener("click", () => { r.playing = false; clearInterval(r.tick); tile.remove(); sessions.delete(r.id); updateEmpty(); });
-      head.append(dot, title, spacer, close);
+      head.append(dot, title, spacer, full, close);
       makeDraggable(tile, head);
       const termEl = document.createElement("div"); termEl.className = "tile-term";
       const ctrls = document.createElement("div"); ctrls.className = "replay-controls";
