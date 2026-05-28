@@ -4,11 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
-  <!-- Security posture, handoff §8. xterm.js (P3) will load from cdnjs with SRI. -->
+  <!-- Security posture, handoff §8. xterm.js from cdnjs with SRI; its CSS is inlined so style-src stays 'self'. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
   <title>Menagerie</title>
+  <!-- xterm.js 5.5.0 (cdnjs, unminified — cdnjs has no min.js for this version). UMD global: Terminal. -->
+  <script defer
+          src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.5.0/xterm.js"
+          integrity="sha512-Gujw5GajF5is3nMoGv9X+tCMqePLL/60qvAv1LofUZTV9jK8ENbM9L+maGmOsNzuZaiuyc/fpph1KT9uR5w3CQ=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <style>
+    /* xterm.js 5.5.0 base styles, inlined to keep style-src 'self'. */
+    .xterm{cursor:text;position:relative;user-select:none;-ms-user-select:none;-webkit-user-select:none}.xterm.focus,.xterm:focus{outline:0}.xterm .xterm-helpers{position:absolute;top:0;z-index:5}.xterm .xterm-helper-textarea{padding:0;border:0;margin:0;position:absolute;opacity:0;left:-9999em;top:0;width:0;height:0;z-index:-5;white-space:nowrap;overflow:hidden;resize:none}.xterm .composition-view{background:#000;color:#fff;display:none;position:absolute;white-space:nowrap;z-index:1}.xterm .composition-view.active{display:block}.xterm .xterm-viewport{background-color:#000;overflow-y:scroll;cursor:default;position:absolute;right:0;left:0;top:0;bottom:0}.xterm .xterm-screen{position:relative}.xterm .xterm-screen canvas{position:absolute;left:0;top:0}.xterm .xterm-scroll-area{visibility:hidden}.xterm-char-measure-element{display:inline-block;visibility:hidden;position:absolute;top:0;left:-9999em;line-height:normal}.xterm.enable-mouse-events{cursor:default}.xterm .xterm-cursor-pointer,.xterm.xterm-cursor-pointer{cursor:pointer}.xterm.column-select.focus{cursor:crosshair}.xterm .xterm-accessibility:not(.debug),.xterm .xterm-message{position:absolute;left:0;top:0;bottom:0;right:0;z-index:10;color:transparent;pointer-events:none}.xterm .xterm-accessibility-tree:not(.debug) ::selection{color:transparent}.xterm .xterm-accessibility-tree{user-select:text;white-space:pre}.xterm .live-region{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}.xterm-dim{opacity:1!important}.xterm-underline-1{text-decoration:underline}.xterm-underline-2{text-decoration:double underline}.xterm-underline-3{text-decoration:wavy underline}.xterm-underline-4{text-decoration:dotted underline}.xterm-underline-5{text-decoration:dashed underline}.xterm-overline{text-decoration:overline}.xterm-strikethrough{text-decoration:line-through}.xterm-screen .xterm-decoration-container .xterm-decoration{z-index:6;position:absolute}.xterm-decoration-overview-ruler{z-index:8;position:absolute;top:0;right:0;pointer-events:none}.xterm-decoration-top{z-index:2;position:relative}
+    .xterm .xterm-viewport{background-color:transparent!important}
+    .xterm{padding:6px 8px}
+
     :root {
       --bg: #0f1115; --panel: #161922; --panel-2: #1d212b; --elev: #232834;
       --border: #2a2f3a; --text: #e6e8ec; --muted: #9aa3b2; --faint: #6e7681;
@@ -65,15 +75,17 @@
     .relay-chip .host { color: var(--faint); font-size: 12px; }
 
     .dot-status { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--grey); }
-    .s-connected { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.15); }
-    .s-connecting { background: var(--yellow); animation: pulse 1.1s ease-in-out infinite; }
+    .s-connected, .s-running { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.15); }
+    .s-connecting, .s-idle { background: var(--yellow); }
+    .s-connecting { animation: pulse 1.1s ease-in-out infinite; }
     .s-error { background: var(--red); }
-    .s-closed { background: var(--grey); }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    .s-closed, .s-exited { background: var(--grey); box-shadow: none; }
+    .s-needs_input { background: var(--red); box-shadow: 0 0 0 3px rgba(248,81,73,.18); animation: pulse 1.1s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 
     .grid {
       display: grid; gap: 14px;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     }
     .empty {
       border: 1px dashed var(--border); border-radius: var(--radius);
@@ -82,6 +94,17 @@
     }
     .empty h2 { color: var(--text); font-size: 16px; font-weight: 600; margin: 0 0 6px; }
     .empty p { margin: 0 0 16px; }
+
+    /* ---- tile ---- */
+    .tile { display: flex; flex-direction: column; height: 380px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .tile.focused { border-color: var(--accent); }
+    .tile-head { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-bottom: 1px solid var(--border); background: var(--panel-2); cursor: default; }
+    .tile-title { font-size: 12.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tile-title .sub { color: var(--faint); font-weight: 400; }
+    .tile-term { flex: 1; min-height: 0; background: #0d1017; overflow: hidden; }
+    .tile-input { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
+    .tile-input input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 9px; outline: none; font-family: var(--mono); font-size: 12.5px; }
+    .tile-input input:focus { border-color: var(--accent); }
 
     /* ---- modal ---- */
     .scrim {
@@ -95,10 +118,7 @@
       border-radius: var(--radius); width: 100%; max-width: 460px;
       box-shadow: 0 16px 48px rgba(0,0,0,.5); overflow: hidden;
     }
-    .modal header {
-      display: flex; align-items: center; padding: 14px 16px;
-      border-bottom: 1px solid var(--border);
-    }
+    .modal header { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
     .modal header h2 { margin: 0; font-size: 15px; font-weight: 600; }
     .modal .body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
     .modal .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); margin-bottom: 8px; }
@@ -116,20 +136,12 @@
     .row { display: flex; gap: 8px; align-items: flex-end; }
     .row .field { flex: 1; }
 
-    .note {
-      font-size: 12.5px; color: var(--muted);
-      background: var(--panel-2); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 9px 11px;
-    }
+    .note { font-size: 12.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px; }
     .inline-error { color: var(--red); font-size: 12.5px; min-height: 1em; }
     .inline-ok { color: var(--green); font-size: 12.5px; min-height: 1em; }
 
     .relay-list { display: flex; flex-direction: column; gap: 8px; }
-    .relay-row {
-      display: flex; align-items: center; gap: 10px;
-      background: var(--panel-2); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 9px 11px;
-    }
+    .relay-row { display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px; }
     .relay-row .meta { flex: 1; min-width: 0; }
     .relay-row .meta .n { font-weight: 550; }
     .relay-row .meta .u { color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -148,6 +160,7 @@
 
   <main class="main">
     <div class="relay-strip" id="relayStrip"></div>
+    <div class="empty" id="emptyState"></div>
     <div class="grid" id="grid"></div>
   </main>
 
@@ -164,19 +177,13 @@
           <div class="section-title">Relays</div>
           <div class="relay-list" id="relayList"></div>
           <div style="height:10px"></div>
-          <div class="field">
-            <label for="relayUrl">Relay URL</label>
-            <input id="relayUrl" placeholder="ws://127.0.0.1:7878" autocomplete="off" spellcheck="false" />
-          </div>
+          <div class="field"><label for="relayUrl">Relay URL</label>
+            <input id="relayUrl" placeholder="ws://127.0.0.1:7878" autocomplete="off" spellcheck="false" /></div>
           <div style="height:10px"></div>
-          <div class="field">
-            <label for="relayToken">Registration token</label>
-            <input id="relayToken" placeholder="paste from `menagerie-relay token print`" autocomplete="off" spellcheck="false" />
-          </div>
+          <div class="field"><label for="relayToken">Registration token</label>
+            <input id="relayToken" placeholder="paste from `menagerie-relay token print`" autocomplete="off" spellcheck="false" /></div>
           <div style="height:10px"></div>
-          <div class="row">
-            <button class="btn primary" id="addRelayBtn">Add relay</button>
-          </div>
+          <div class="row"><button class="btn primary" id="addRelayBtn">Add relay</button></div>
           <div style="height:6px"></div>
           <div class="inline-error" id="addRelayError"></div>
         </div>
@@ -189,26 +196,14 @@
     <div class="modal" role="dialog" aria-label="Spawn agent">
       <header><h2>Spawn agent</h2><span class="spacer"></span><button class="btn icon ghost" data-close>✕</button></header>
       <div class="body">
-        <div class="field">
-          <label for="spawnRelay">Relay</label>
-          <select id="spawnRelay"></select>
-        </div>
-        <div class="field">
-          <label for="spawnAgent">Agent</label>
-          <select id="spawnAgent"></select>
-        </div>
-        <div class="field" id="customCmdField" style="display:none">
-          <label for="spawnCustomCmd">Custom command</label>
-          <input id="spawnCustomCmd" placeholder="e.g. aider --model gpt-4o" autocomplete="off" spellcheck="false" />
-        </div>
-        <div class="field">
-          <label for="spawnCwd">Working directory</label>
-          <input id="spawnCwd" placeholder="/Users/you/code/project" autocomplete="off" spellcheck="false" />
-        </div>
-        <div class="field">
-          <label for="spawnTask">Task</label>
-          <textarea id="spawnTask" placeholder="what should the agent do?"></textarea>
-        </div>
+        <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select></div>
+        <div class="field"><label for="spawnAgent">Agent</label><select id="spawnAgent"></select></div>
+        <div class="field" id="customCmdField" style="display:none"><label for="spawnCustomCmd">Custom command</label>
+          <input id="spawnCustomCmd" placeholder="e.g. bash" autocomplete="off" spellcheck="false" /></div>
+        <div class="field"><label for="spawnCwd">Working directory</label>
+          <input id="spawnCwd" placeholder="/Users/you/code/project" autocomplete="off" spellcheck="false" /></div>
+        <div class="field"><label for="spawnTask">Task</label>
+          <textarea id="spawnTask" placeholder="what should the agent do?"></textarea></div>
         <div class="row"><button class="btn primary" id="doSpawnBtn">Spawn</button></div>
         <div class="inline-error" id="spawnResult"></div>
       </div>
@@ -216,16 +211,16 @@
   </div>
 
   <script type="module">
-    // ---- Menagerie app shell (P2) --------------------------------------
-    // In-memory state only. FSA persistence (relays.json, sessions) is P4.
-    // Live tiles + xterm.js are P3. This shell does the hello+register
-    // round-trip and a spawn dialog that surfaces the relay's response.
-
+    // ---- Menagerie app (P3) --------------------------------------------
+    // In-memory state. FSA persistence + reconnect/replay are P4.
     const PROTOCOL_VERSION = "1.0";
-    /** @type {{id:string,url:string,token:string,ws:WebSocket|null,status:string,name:string,hello:any,error:string|null}[]} */
-    const relays = [];
-    const pendingSpawns = new Map(); // client_id -> true
+    const TERM_THEME = { background: "#0d1017", foreground: "#d6d9df", cursor: "#6ea8fe", selectionBackground: "#2a3550" };
+    const TERM_FONT = (getComputedStyle(document.documentElement).getPropertyValue("--mono").trim()) || "monospace";
+    const TERM_SIZE = 13, TERM_LH = 1.2;
 
+    const relays = [];               // {id,url,token,ws,status,name,hello,error}
+    const sessions = new Map();      // session_id -> session object
+    const pendingSpawns = new Set(); // client_id
     const $ = (id) => document.getElementById(id);
 
     // ---- relay connection ----
@@ -236,238 +231,248 @@
       renderAll();
       return relay;
     }
-
     function connect(relay) {
       let ws;
       try { ws = new WebSocket(relay.url); }
       catch (e) { relay.status = "error"; relay.error = "bad URL: " + e.message; renderAll(); return; }
       relay.ws = ws;
-      relay.status = "connecting";
-      relay.error = null;
-      ws.addEventListener("message", (ev) => {
-        let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-        handleMessage(relay, msg);
-      });
-      ws.addEventListener("close", () => {
-        if (relay.status !== "error") relay.status = "closed";
-        renderAll();
-      });
-      ws.addEventListener("error", () => { /* close event follows with detail */ });
+      relay.status = "connecting"; relay.error = null;
+      ws.addEventListener("message", (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } handleMessage(relay, m); });
+      ws.addEventListener("close", () => { if (relay.status !== "error") relay.status = "closed"; renderAll(); });
+      ws.addEventListener("error", () => {});
+    }
+    function send(relay, obj) { if (relay.ws && relay.ws.readyState === WebSocket.OPEN) relay.ws.send(JSON.stringify(obj)); }
+    function removeRelay(id) {
+      const i = relays.findIndex((r) => r.id === id); if (i < 0) return;
+      try { relays[i].ws && relays[i].ws.close(); } catch {}
+      relays.splice(i, 1); renderAll();
     }
 
     function handleMessage(relay, msg) {
       switch (msg.type) {
         case "hello":
-          relay.hello = msg;
-          relay.name = msg.relay_name || relay.url;
-          if (msg.protocol_version && msg.protocol_version !== PROTOCOL_VERSION) {
+          relay.hello = msg; relay.name = msg.relay_name || relay.url;
+          if (msg.protocol_version && msg.protocol_version !== PROTOCOL_VERSION)
             console.warn(`relay protocol ${msg.protocol_version} != app ${PROTOCOL_VERSION}; attempting anyway`);
-          }
           send(relay, { type: "register", registration_token: relay.token });
           break;
         case "registered":
-          relay.status = "connected";
-          relay.error = null;
+          relay.status = "connected"; relay.error = null; break;
+        case "spawned": {
+          pendingSpawns.delete(msg.client_id);
+          closeModal("spawnScrim");
+          const sess = { id: msg.session_id, relayId: relay.id, relayName: relay.name, agent: msg.agent,
+            token: msg.session_token, status: "running", startedAt: Date.now(), cols: 0, rows: 0, term: null };
+          sessions.set(sess.id, sess);
+          if (window.Terminal) createTile(sess); else showSpawnResult("xterm.js failed to load", false);
           break;
+        }
+        case "output": {
+          const s = sessions.get(msg.session_id); if (!s || !s.term) break;
+          s.term.write(bytesFromB64(msg.data));
+          if (s.status === "needs_input" || s.status === "idle") setSessionStatus(s, "running");
+          break;
+        }
+        case "event": {
+          const s = sessions.get(msg.session_id); if (!s) break;
+          if (msg.event === "exited") {
+            setSessionStatus(s, "exited"); s.tile.classList.add("exited");
+            if (s.ti) s.ti.disabled = true; if (s.sendBtn) s.sendBtn.disabled = true;
+            if (s.timer) clearInterval(s.timer);
+            if (s.term) s.term.write(`\r\n\x1b[90m— exited (code ${msg.exit_code}) —\x1b[0m\r\n`);
+          } else if (msg.event === "needs_input") setSessionStatus(s, "needs_input");
+          else if (msg.event === "idle") setSessionStatus(s, "idle");
+          updateAttention();
+          break;
+        }
         case "error":
-          if (msg.code === "auth_failed") {
-            relay.status = "error";
-            relay.error = msg.message || "authentication failed";
-            try { relay.ws.close(); } catch {}
-          } else if (msg.session_id === undefined && pendingSpawnsActive()) {
-            showSpawnResult(msg.message || msg.code, false);
-          } else {
-            // spawn/other errors surface in the spawn dialog if open
-            showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
-          }
+          if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} }
+          else showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
           break;
-        case "spawned":
-          // Not reachable until P3 (relay has no PTY yet), but handle gracefully.
-          showSpawnResult("spawned " + msg.agent + " (session " + msg.session_id + ")", true);
-          break;
+        case "resume_failed": break; // P4
       }
       renderAll();
     }
 
-    function pendingSpawnsActive() { return pendingSpawns.size > 0; }
-
-    function send(relay, obj) {
-      if (relay.ws && relay.ws.readyState === WebSocket.OPEN) relay.ws.send(JSON.stringify(obj));
-    }
-
-    function removeRelay(id) {
-      const i = relays.findIndex((r) => r.id === id);
-      if (i < 0) return;
-      try { relays[i].ws && relays[i].ws.close(); } catch {}
-      relays.splice(i, 1);
-      renderAll();
-    }
-
+    // ---- sessions / tiles ----
     function spawn(relayId, agent, cwd, task, customCmd) {
       const relay = relays.find((r) => r.id === relayId);
       if (!relay || relay.status !== "connected") { showSpawnResult("relay not connected", false); return; }
       const client_id = crypto.randomUUID();
-      pendingSpawns.set(client_id, true);
-      // Task goes through as args; the shim decides formatting (no per-agent
-      // special-casing in the browser — hard NOT #6). custom carries its command.
-      const args = agent === "custom"
-        ? (customCmd ? customCmd.split(/\s+/) : [])
-        : (task ? [task] : []);
+      pendingSpawns.add(client_id);
+      // Task goes through as args; the shim formats it (no per-agent logic here — hard NOT #6).
+      const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (task ? [task] : []);
       send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id });
-      showSpawnResult("spawn sent…", true);
+      showSpawnResult("spawning…", true);
     }
 
-    // ---- rendering ----
-    function statusClass(s) { return "s-" + s; }
+    function createTile(sess) {
+      const tile = document.createElement("div"); tile.className = "tile"; tile.dataset.sid = sess.id;
+      const head = document.createElement("div"); head.className = "tile-head";
+      const dot = document.createElement("span"); dot.className = "dot-status s-running"; dot.setAttribute("aria-label", "running");
+      const title = document.createElement("span"); title.className = "tile-title";
+      title.innerHTML = `${escapeHtml(sess.agent)} <span class="sub">· ${escapeHtml(sess.relayName)} · <span class="timer">00:00</span></span>`;
+      const spacer = document.createElement("span"); spacer.className = "spacer";
+      const kill = document.createElement("button"); kill.className = "btn icon ghost"; kill.title = "Kill"; kill.textContent = "🗑";
+      kill.addEventListener("click", () => signal(sess, "kill"));
+      head.append(dot, title, spacer, kill);
+      head.addEventListener("click", (e) => { if (e.target !== kill) focusTile(sess); });
 
+      const termEl = document.createElement("div"); termEl.className = "tile-term";
+      const bar = document.createElement("div"); bar.className = "tile-input";
+      const ti = document.createElement("input"); ti.placeholder = "type input… (Enter to send)";
+      ti.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendInput(sess, ti.value + "\n"); ti.value = ""; } });
+      const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
+      sendBtn.addEventListener("click", () => { sendInput(sess, ti.value + "\n"); ti.value = ""; ti.focus(); });
+      bar.append(ti, sendBtn);
+
+      tile.append(head, termEl, bar);
+      $("grid").appendChild(tile);
+
+      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH,
+        cursorBlink: true, scrollback: 2000, theme: TERM_THEME, screenReaderMode: true });
+      term.open(termEl);
+      term.onData((d) => sendInput(sess, d));
+      Object.assign(sess, { term, tile, termEl, dot, ti, sendBtn });
+      fitTile(sess);
+      sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
+      updateEmpty(); focusTile(sess); term.focus();
+    }
+
+    function focusTile(sess) {
+      document.querySelectorAll(".tile.focused").forEach((t) => t.classList.remove("focused"));
+      sess.tile.classList.add("focused");
+    }
+    function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } }
+    function sendInput(sess, data) {
+      const relay = relays.find((r) => r.id === sess.relayId);
+      if (!relay || sess.status === "exited") return;
+      send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data });
+    }
+    function signal(sess, sig, cols, rows) {
+      const relay = relays.find((r) => r.id === sess.relayId); if (!relay) return;
+      const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig };
+      if (sig === "resize") { m.cols = cols; m.rows = rows; }
+      send(relay, m);
+    }
+    function updateTimer(sess) {
+      const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return;
+      const s = Math.floor((Date.now() - sess.startedAt) / 1000);
+      el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }
+    function updateAttention() {
+      const n = [...sessions.values()].filter((s) => s.status === "needs_input").length;
+      document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie";
+    }
+
+    // manual fit (cdnjs 5.5.0 ships no fit addon)
+    let _measureCtx;
+    function cellWidth() { _measureCtx ||= document.createElement("canvas").getContext("2d"); _measureCtx.font = `${TERM_SIZE}px ${TERM_FONT}`; return _measureCtx.measureText("W").width || 8; }
+    function fitTile(sess) {
+      if (!sess.term || !sess.termEl) return;
+      const w = sess.termEl.clientWidth, h = sess.termEl.clientHeight; if (w <= 0 || h <= 0) return;
+      const cols = Math.max(20, Math.floor((w - 18) / cellWidth()));
+      const rows = Math.max(6, Math.floor((h - 10) / (TERM_SIZE * TERM_LH)));
+      if (cols !== sess.cols || rows !== sess.rows) {
+        try { sess.term.resize(cols, rows); } catch {}
+        sess.cols = cols; sess.rows = rows;
+        if (sess.status !== "exited") signal(sess, "resize", cols, rows);
+      }
+    }
+
+    function bytesFromB64(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+    function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+    // ---- rendering (relays + empty state; tiles persist) ----
     function renderRelayStrip() {
-      const el = $("relayStrip");
-      el.innerHTML = "";
+      const el = $("relayStrip"); el.innerHTML = "";
       for (const r of relays) {
-        const chip = document.createElement("div");
-        chip.className = "relay-chip";
-        const dot = document.createElement("span");
-        dot.className = "dot-status " + statusClass(r.status);
-        const name = document.createElement("span");
-        name.className = "name"; name.textContent = r.name;
-        const host = document.createElement("span");
-        host.className = "host";
+        const chip = document.createElement("div"); chip.className = "relay-chip";
+        const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
+        const name = document.createElement("span"); name.className = "name"; name.textContent = r.name;
+        const host = document.createElement("span"); host.className = "host";
         host.textContent = r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status;
-        chip.append(dot, name, host);
-        el.appendChild(chip);
+        chip.append(dot, name, host); el.appendChild(chip);
       }
     }
-
-    function renderGrid() {
-      const el = $("grid");
-      el.innerHTML = "";
+    function updateEmpty() {
+      const el = $("emptyState");
+      if (sessions.size > 0) { el.style.display = "none"; return; }
+      el.style.display = ""; el.innerHTML = "";
       const connected = relays.some((r) => r.status === "connected");
-      const empty = document.createElement("div");
-      empty.className = "empty";
       if (relays.length === 0) {
-        empty.innerHTML = `<h2>No relays yet</h2><p>Add a relay in Settings to connect to where your agents run.</p>`;
-        const b = document.createElement("button");
-        b.className = "btn"; b.textContent = "Open Settings";
-        b.addEventListener("click", () => openModal("settingsScrim"));
-        empty.appendChild(b);
+        el.innerHTML = `<h2>No relays yet</h2><p>Add a relay in Settings to connect to where your agents run.</p>`;
+        const b = document.createElement("button"); b.className = "btn"; b.textContent = "Open Settings";
+        b.addEventListener("click", () => openModal("settingsScrim")); el.appendChild(b);
       } else if (!connected) {
-        empty.innerHTML = `<h2>No connected relays</h2><p>Check the relay is running and the token matches.</p>`;
+        el.innerHTML = `<h2>No connected relays</h2><p>Check the relay is running and the token matches.</p>`;
       } else {
-        empty.innerHTML = `<h2>No agents running</h2><p>Click <strong>+ Spawn</strong> to start one. (Live tiles arrive in P3.)</p>`;
+        el.innerHTML = `<h2>No agents running</h2><p>Click <strong>+ Spawn</strong> to start one.</p>`;
       }
-      el.appendChild(empty);
     }
-
     function renderRelayList() {
-      const el = $("relayList");
-      el.innerHTML = "";
-      if (relays.length === 0) {
-        const none = document.createElement("div");
-        none.className = "hint"; none.textContent = "No relays added yet.";
-        el.appendChild(none);
-        return;
-      }
+      const el = $("relayList"); el.innerHTML = "";
+      if (relays.length === 0) { const n = document.createElement("div"); n.className = "hint"; n.textContent = "No relays added yet."; el.appendChild(n); return; }
       for (const r of relays) {
-        const row = document.createElement("div");
-        row.className = "relay-row";
-        const dot = document.createElement("span");
-        dot.className = "dot-status " + statusClass(r.status);
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
+        const row = document.createElement("div"); row.className = "relay-row";
+        const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
+        const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
         meta.querySelector(".n").textContent = r.name + (r.error ? ` — ${r.error}` : "");
         meta.querySelector(".u").textContent = r.url;
-        const rm = document.createElement("button");
-        rm.className = "link danger"; rm.textContent = "Remove";
+        const rm = document.createElement("button"); rm.className = "link danger"; rm.textContent = "Remove";
         rm.addEventListener("click", () => removeRelay(r.id));
-        row.append(dot, meta, rm);
-        el.appendChild(row);
+        row.append(dot, meta, rm); el.appendChild(row);
       }
     }
-
     function renderSpawnDialog() {
-      const relaySel = $("spawnRelay");
-      const agentSel = $("spawnAgent");
-      const prev = relaySel.value;
-      relaySel.innerHTML = "";
+      const relaySel = $("spawnRelay"); const prev = relaySel.value; relaySel.innerHTML = "";
       const connected = relays.filter((r) => r.status === "connected");
-      for (const r of connected) {
-        const o = document.createElement("option");
-        o.value = r.id; o.textContent = r.name; relaySel.appendChild(o);
-      }
-      if (connected.length && connected.some((r) => r.id === prev)) relaySel.value = prev;
-      renderAgentOptions();
-      $("doSpawnBtn").disabled = connected.length === 0;
+      for (const r of connected) { const o = document.createElement("option"); o.value = r.id; o.textContent = r.name; relaySel.appendChild(o); }
+      if (connected.some((r) => r.id === prev)) relaySel.value = prev;
+      renderAgentOptions(); $("doSpawnBtn").disabled = connected.length === 0;
     }
-
     function renderAgentOptions() {
-      const agentSel = $("spawnAgent");
-      agentSel.innerHTML = "";
+      const agentSel = $("spawnAgent"); agentSel.innerHTML = "";
       const r = relays.find((x) => x.id === $("spawnRelay").value);
       const agents = (r && r.hello && r.hello.agents) ? r.hello.agents : [];
-      for (const a of agents) {
-        const o = document.createElement("option");
-        o.value = a; o.textContent = a; agentSel.appendChild(o);
-      }
+      for (const a of agents) { const o = document.createElement("option"); o.value = a; o.textContent = a; agentSel.appendChild(o); }
       $("customCmdField").style.display = agentSel.value === "custom" ? "" : "none";
     }
-
     function renderAll() {
-      renderRelayStrip();
-      renderGrid();
-      renderRelayList();
+      renderRelayStrip(); renderRelayList(); updateEmpty();
       if ($("spawnScrim").classList.contains("open")) renderSpawnDialog();
     }
 
     // ---- modals ----
-    function openModal(id) {
-      $(id).classList.add("open");
-      if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; }
-    }
+    function openModal(id) { $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } }
     function closeModal(id) { $(id).classList.remove("open"); }
     function closeAllModals() { document.querySelectorAll(".scrim").forEach((s) => s.classList.remove("open")); }
-
-    function showSpawnResult(text, ok) {
-      const el = $("spawnResult");
-      el.textContent = text;
-      el.className = ok ? "inline-ok" : "inline-error";
-    }
+    function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")); }
+    function showSpawnResult(text, ok) { const el = $("spawnResult"); el.textContent = text; el.className = ok ? "inline-ok" : "inline-error"; }
 
     // ---- wiring ----
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
     $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
     $("spawnRelay").addEventListener("change", renderAgentOptions);
-    $("spawnAgent").addEventListener("change", () => {
-      $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none";
-    });
-
+    $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
     $("addRelayBtn").addEventListener("click", () => {
-      const url = $("relayUrl").value.trim();
-      const token = $("relayToken").value.trim();
-      const err = $("addRelayError");
-      err.textContent = "";
+      const url = $("relayUrl").value.trim(), token = $("relayToken").value.trim(), err = $("addRelayError"); err.textContent = "";
       if (!/^wss?:\/\//.test(url)) { err.textContent = "URL must start with ws:// or wss://"; return; }
       if (!token) { err.textContent = "Registration token is required."; return; }
-      addRelay(url, token);
-      $("relayUrl").value = ""; $("relayToken").value = "";
+      addRelay(url, token); $("relayUrl").value = ""; $("relayToken").value = "";
     });
-
     $("doSpawnBtn").addEventListener("click", () => {
       spawn($("spawnRelay").value, $("spawnAgent").value, $("spawnCwd").value.trim(), $("spawnTask").value.trim(), $("spawnCustomCmd").value.trim());
     });
-
-    document.querySelectorAll("[data-close]").forEach((el) => {
-      el.addEventListener("click", (e) => { if (e.target === el) closeAllModals(); });
-    });
+    document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeAllModals(); }));
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeAllModals();
       else if (e.key === "n" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !anyModalOpen()) openModal("spawnScrim");
     });
-    function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")); }
+    let _fitT; window.addEventListener("resize", () => { clearTimeout(_fitT); _fitT = setTimeout(() => { for (const s of sessions.values()) if (s.status !== "exited") fitTile(s); }, 150); });
 
     renderAll();
-    // Expose for manual testing in the console.
-    window.__menagerie = { relays, addRelay };
+    window.__menagerie = { relays, sessions, addRelay };
   </script>
 </body>
 </html>
