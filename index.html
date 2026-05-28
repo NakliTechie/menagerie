@@ -30,7 +30,7 @@
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
-    body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow: hidden; }
     button { font-family: inherit; font-size: inherit; cursor: pointer; }
     input, select, textarea { font-family: inherit; font-size: inherit; }
 
@@ -49,11 +49,17 @@
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .btn.lg { padding: 10px 18px; font-size: 15px; }
 
-    .main { padding: 18px; max-width: 1500px; margin: 0 auto; }
-    .relay-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-    .relay-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px 5px 10px; font-size: 13px; }
-    .relay-chip .name { font-weight: 550; }
-    .relay-chip .host { color: var(--faint); font-size: 12px; }
+    .app { display: flex; align-items: stretch; height: calc(100vh - 52px); }
+    .sidebar { flex: 0 0 248px; width: 248px; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 4px 10px 24px; }
+    .sidebar.collapsed { display: none; }
+    .sb-title { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); margin: 14px 6px 6px; }
+    .sb-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+    .sb-row:hover { background: var(--panel-2); }
+    .sb-row.active { background: var(--elev); }
+    .sb-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sb-row .mt { color: var(--faint); font-size: 11px; flex: 0 0 auto; }
+    .sb-empty { color: var(--faint); font-size: 12px; padding: 4px 8px; }
+    .main { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px; }
 
     .dot-status { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--grey); }
     .s-connected, .s-running { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.15); }
@@ -72,6 +78,7 @@
     .tile.dragging { opacity: .45; }
     .tile.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
     .s-needs_token { background: var(--yellow); }
+    .s-rate_limited { background: #db8a3a; box-shadow: 0 0 0 3px rgba(219,138,58,.18); animation: pulse 1.8s ease-in-out infinite; }
 
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
     .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--muted); background: linear-gradient(180deg, var(--panel), transparent); }
@@ -132,6 +139,7 @@
 </head>
 <body>
   <div class="topbar">
+    <button class="btn icon ghost" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
     <span class="wordmark">Menagerie<span class="dot">.</span></span>
     <span class="workspace" id="workspace">no workspace</span>
     <span class="spacer"></span>
@@ -139,11 +147,20 @@
     <button class="btn icon ghost" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
   </div>
 
-  <main class="main">
-    <div class="relay-strip" id="relayStrip"></div>
-    <div class="empty" id="emptyState"></div>
-    <div class="grid" id="grid"></div>
-  </main>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sb-title">Relays</div>
+      <div id="sbRelays"></div>
+      <div class="sb-title">Sessions</div>
+      <div id="sbSessions"></div>
+      <div class="sb-title">Past sessions</div>
+      <div id="sbPast"></div>
+    </aside>
+    <main class="main">
+      <div class="empty" id="emptyState"></div>
+      <div class="grid" id="grid"></div>
+    </main>
+  </div>
 
   <!-- Settings -->
   <div class="scrim" id="settingsScrim" data-close>
@@ -401,7 +418,7 @@
           const bytes = bytesFromB64(msg.data);
           s.term.write(bytes);
           if (FS.ok() && msg.seq >= 0) s.pending.push(bytes); // seq -1 = replay-on-attach; don't re-persist
-          if (s.status === "needs_input" || s.status === "idle") setSessionStatus(s, "running");
+          if (s.status === "needs_input" || s.status === "idle" || s.status === "rate_limited") setSessionStatus(s, "running");
           break;
         }
         case "event": {
@@ -413,7 +430,8 @@
             if (s.term) s.term.write(`\r\n\x1b[90m— exited (code ${msg.exit_code}) —\x1b[0m\r\n`);
             s.endedAt = Date.now(); s.exitCode = msg.exit_code;
             flushSession(s).then(() => writeSessionMeta(s)).then(refreshPastSessions);
-          } else if (msg.event === "needs_input") setSessionStatus(s, "needs_input");
+          } else if (msg.event === "needs_input") { if (s.status !== "needs_input") beep(); setSessionStatus(s, "needs_input"); }
+          else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
           else if (msg.event === "idle") setSessionStatus(s, "idle");
           updateAttention(); break;
         }
@@ -447,23 +465,45 @@
 
     function concatChunks(chunks) { let n = 0; for (const c of chunks) n += c.length; const out = new Uint8Array(n); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; } return out; }
 
-    async function refreshPastSessions() {
-      const el = $("pastList"); if (!el) return; el.innerHTML = "";
-      if (!FS.ok()) { el.innerHTML = `<div class="hint">Pick a workspace folder to keep session history.</div>`; return; }
+    async function loadPastMetas() {
+      if (!FS.ok()) return [];
       const names = await FS.listSessionMetas();
-      if (names.length === 0) { el.innerHTML = `<div class="hint">No past sessions yet.</div>`; return; }
       const metas = [];
       for (const n of names) { const m = await FS.readJSON([MENAGERIE_DIR, SESSIONS_DIR, n]); if (m) metas.push(m); }
       metas.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
-      for (const m of metas) {
-        const row = document.createElement("div"); row.className = "list-row";
-        const dot = document.createElement("span"); dot.className = "dot-status s-exited";
-        const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
-        meta.querySelector(".n").textContent = `${m.agent} · ${m.relay_name || ""}`;
-        meta.querySelector(".u").textContent = new Date(m.started_at).toLocaleString() + (m.exit_code != null ? ` · exit ${m.exit_code}` : "");
-        const btn = document.createElement("button"); btn.className = "link"; btn.textContent = "Replay";
-        btn.addEventListener("click", () => { closeAllModals(); openReplay(m); });
-        row.append(dot, meta, btn); el.appendChild(row);
+      return metas;
+    }
+    async function refreshPastSessions() {
+      const metas = await loadPastMetas();
+      const full = $("pastList");
+      if (full) {
+        full.innerHTML = "";
+        if (!FS.ok()) full.innerHTML = `<div class="hint">Pick a workspace folder to keep session history.</div>`;
+        else if (metas.length === 0) full.innerHTML = `<div class="hint">No past sessions yet.</div>`;
+        else for (const m of metas) {
+          const row = document.createElement("div"); row.className = "list-row";
+          const dot = document.createElement("span"); dot.className = "dot-status s-exited";
+          const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
+          meta.querySelector(".n").textContent = `${m.agent} · ${m.relay_name || ""}`;
+          meta.querySelector(".u").textContent = new Date(m.started_at).toLocaleString() + (m.exit_code != null ? ` · exit ${m.exit_code}` : "");
+          const btn = document.createElement("button"); btn.className = "link"; btn.textContent = "Replay";
+          btn.addEventListener("click", () => { closeAllModals(); openReplay(m); });
+          row.append(dot, meta, btn); full.appendChild(row);
+        }
+      }
+      const sb = $("sbPast");
+      if (sb) {
+        sb.innerHTML = "";
+        if (!FS.ok() || metas.length === 0) sb.innerHTML = `<div class="sb-empty">none</div>`;
+        else for (const m of metas.slice(0, 12)) {
+          const row = document.createElement("div"); row.className = "sb-row"; row.title = "Replay · " + (m.relay_name || "");
+          const dot = document.createElement("span"); dot.className = "dot-status s-exited";
+          const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = m.agent;
+          const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = "▶";
+          row.append(dot, nm, mt);
+          row.addEventListener("click", () => { closeAllModals(); openReplay(m); });
+          sb.appendChild(row);
+        }
       }
     }
 
@@ -530,6 +570,7 @@
       tile.classList.add("focused");
       const s = sessions.get(tile.dataset.sid); if (s && s.term) s.term.focus();
       tile.scrollIntoView({ block: "nearest" });
+      syncSidebarActive();
     }
     function focusTileByIndex(i) { const t = tilesInOrder()[i]; if (t) focusTileEl(t); }
     function cycleFocus(dir) { const ts = tilesInOrder(); if (!ts.length) return; let i = ts.findIndex((t) => t.classList.contains("focused")); i = (i < 0 ? 0 : (i + dir + ts.length) % ts.length); focusTileEl(ts[i]); }
@@ -546,6 +587,24 @@
     function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
     function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
     function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
+    // Soft two-tone chime when an agent transitions into needs_input. Web Audio,
+    // so no asset to bundle; first call may be gated until the user interacts.
+    let _audioCtx;
+    function beep() {
+      try {
+        _audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+        if (_audioCtx.state === "suspended") _audioCtx.resume();
+        const now = _audioCtx.currentTime;
+        for (const [i, f] of [880, 1175].entries()) {
+          const o = _audioCtx.createOscillator(), g = _audioCtx.createGain(), t = now + i * 0.12;
+          o.type = "sine"; o.frequency.value = f;
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+          o.connect(g); g.connect(_audioCtx.destination); o.start(t); o.stop(t + 0.12);
+        }
+      } catch {}
+    }
 
     let _measureCtx;
     function cellWidth() { _measureCtx ||= document.createElement("canvas").getContext("2d"); _measureCtx.font = `${TERM_SIZE}px ${TERM_FONT}`; return _measureCtx.measureText("W").width || 8; }
@@ -606,15 +665,40 @@
     function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
     // ===== rendering ==================================================
-    function renderRelayStrip() {
-      const el = $("relayStrip"); el.innerHTML = "";
-      for (const r of relays) {
-        const chip = document.createElement("div"); chip.className = "relay-chip";
+    // Left sidebar (tuicommander-style): Relays · live Sessions · Past sessions.
+    // Cheap to rebuild, so renderAll() refreshes it on every non-output message.
+    function renderSidebar() {
+      const rel = $("sbRelays"); rel.innerHTML = "";
+      if (relays.length === 0) rel.innerHTML = `<div class="sb-empty">none</div>`;
+      else for (const r of relays) {
+        const row = document.createElement("div"); row.className = "sb-row"; row.title = r.url;
         const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
-        const name = document.createElement("span"); name.className = "name"; name.textContent = r.name;
-        const host = document.createElement("span"); host.className = "host"; host.textContent = r.status === "needs_token" ? "needs token" : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
-        chip.append(dot, name, host); el.appendChild(chip);
+        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.name;
+        const mt = document.createElement("span"); mt.className = "mt";
+        mt.textContent = r.status === "needs_token" ? "token" : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
+        row.append(dot, nm, mt);
+        row.addEventListener("click", () => openModal("settingsScrim"));
+        rel.appendChild(row);
       }
+      const ses = $("sbSessions"); ses.innerHTML = "";
+      const live = [...sessions.values()].filter((s) => !s.replay);
+      if (live.length === 0) ses.innerHTML = `<div class="sb-empty">none running</div>`;
+      else for (const s of live) {
+        const row = document.createElement("div"); row.className = "sb-row"; row.dataset.sid = s.id;
+        if (s.tile && s.tile.classList.contains("focused")) row.classList.add("active");
+        const dot = document.createElement("span"); dot.className = "dot-status s-" + s.status;
+        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = s.agent;
+        const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = s.relayName || "";
+        row.append(dot, nm, mt);
+        row.addEventListener("click", () => focusTile(s));
+        ses.appendChild(row);
+      }
+    }
+    // Update only the active highlight without rebuilding the list (called on focus changes).
+    function syncSidebarActive() {
+      const focused = document.querySelector(".tile.focused");
+      const sid = focused ? focused.dataset.sid : null;
+      document.querySelectorAll("#sbSessions .sb-row").forEach((row) => row.classList.toggle("active", row.dataset.sid === sid));
     }
     function liveCount() { let n = 0; for (const s of sessions.values()) if (!s.replay) n++; return n; }
     function updateEmpty() {
@@ -667,7 +751,7 @@
     }
     // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
-    function renderAll() { renderRelayStrip(); renderRelayList(); updateEmpty(); }
+    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); }
 
     // ===== workspace overlay + modals =================================
     function openWorkspaceOverlay(mode, handle) {
@@ -687,6 +771,7 @@
     // ===== wiring =====================================================
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
     $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
+    $("sidebarToggle").addEventListener("click", () => { $("sidebar").classList.toggle("collapsed"); for (const s of sessions.values()) if (s.tile && !s.replay && s.status !== "exited") setTimeout(() => fitTile(s), 30); });
     $("spawnRelay").addEventListener("change", renderAgentOptions);
     $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
     $("addRelayBtn").addEventListener("click", () => {

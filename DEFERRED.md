@@ -60,6 +60,24 @@
 
 ---
 
+## TUICommander-inspired, with triggers
+
+From the [TUICommander research note](docs/research-tuicommander.md). We adopted its observability cues (collapsible sidebar, needs-input chime, rate-limit pill) and deferred the rest.
+
+**Per-agent detectors + rate-limit countdown timers**
+- *Why:* v1 uses generic, agent-agnostic PTY heuristics on the relay; they cover common cases without baking agent specifics into the pipe.
+- *Trigger:* the generic matcher misses/mis-fires often enough in real use that per-agent patterns earn their complexity — and matching still lives only on the relay, never the browser.
+
+**Fleet usage / spend view**
+- *Why:* provider-specific token/cost accounting is orthogonal to spawn·stream·steer·kill.
+- *Trigger:* a user asks to see token/cost across running sessions.
+
+**Tap-to-answer mobile view**
+- *Why:* Menagerie is already a web app — a phone can load the same URL; a dedicated answer-from-phone view is polish, not a port.
+- *Trigger:* the desktop console is in daily use and answering prompts from a phone becomes a real want. (Overlaps the "Mobile companion view" entry below.)
+
+---
+
 ## Beyond v1.1 — not promised, possible
 
 Only graduate if a real user need surfaces:

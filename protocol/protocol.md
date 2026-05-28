@@ -146,7 +146,7 @@ Relay replies `registered` on success, or `error{code:"auth_failed"}` then close
 ```json
 { "type": "event", "session_id": "…", "event": "exited", "exit_code": 0, "at": "2026-05-28T10:35:12Z" }
 ```
-`exit_code` accompanies `exited`; `child_session_id` accompanies `child_spawned`. `idle` and `needs_input` are shim heuristics (no output for N seconds; prompt-shaped trailing output) — naive in v1.0, refined in v1.1.
+`exit_code` accompanies `exited`; `child_session_id` accompanies `child_spawned`. `idle`, `needs_input`, and `rate_limited` are conservative relay-side heuristics over recent output (a confirmation/choice prompt; a provider rate-limit message) — they may flip back to running when normal output resumes. Clients must tolerate unknown `event` values.
 
 ### `resume` (browser → relay)
 ```json
