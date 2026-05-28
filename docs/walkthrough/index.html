@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Menagerie — Walkthrough</title>
+  <style>
+    /* Design tokens lifted verbatim from apps/menagerie/index.html — keep in sync. */
+    :root {
+      --bg: #0f1115; --panel: #161922; --panel-2: #1d212b; --elev: #232834;
+      --border: #2a2f3a; --text: #e6e8ec; --muted: #9aa3b2; --faint: #6e7681;
+      --accent: #6ea8fe; --accent-press: #5a93e6;
+      --green: #3fb950; --yellow: #d29922; --red: #f85149; --grey: #6e7681;
+      --radius: 10px; --radius-sm: 7px;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: var(--sans); font-size: 15px; line-height: 1.62;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { font-family: var(--mono); font-size: .88em; background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; color: var(--text); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* Top bar mirrors the app's chrome. */
+    .topbar {
+      display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px;
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .wordmark { font-weight: 650; letter-spacing: 0.2px; font-size: 15px; }
+    .wordmark .dot { color: var(--accent); }
+    .topbar .tag { color: var(--muted); font-size: 13px; }
+    .spacer { flex: 1; }
+    .topbar a.gh { color: var(--muted); font-size: 13px; }
+    .topbar a.gh:hover { color: var(--text); text-decoration: none; }
+
+    .wrap { max-width: 860px; margin: 0 auto; padding: 56px 24px 96px; }
+
+    /* Hero */
+    .hero { margin-bottom: 56px; }
+    .hero .mk { font-weight: 650; font-size: 13px; letter-spacing: .4px; color: var(--faint); text-transform: uppercase; margin-bottom: 18px; }
+    .hero h1 { font-size: 38px; line-height: 1.15; font-weight: 680; margin: 0 0 14px; letter-spacing: -0.4px; }
+    .hero h1 .dot { color: var(--accent); }
+    .hero .lede { font-size: 19px; color: var(--text); margin: 0 0 22px; font-weight: 450; }
+    .hero p { color: var(--muted); font-size: 16px; margin: 0 0 14px; }
+    .hero p:last-child { margin-bottom: 0; }
+    .hero strong { color: var(--text); font-weight: 600; }
+
+    /* Section + step headings */
+    .section-eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--accent); font-weight: 650; margin: 64px 0 0; }
+    h2.step { font-size: 24px; font-weight: 650; margin: 8px 0 10px; letter-spacing: -0.2px; }
+    .step-num { color: var(--faint); font-weight: 650; font-variant-numeric: tabular-nums; margin-right: 4px; }
+    .step p { color: var(--muted); font-size: 16px; margin: 0 0 18px; }
+    .step p strong { color: var(--text); font-weight: 600; }
+
+    /* Screenshot figures */
+    figure {
+      margin: 0 0 8px; background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0,0,0,.35);
+    }
+    figure img { display: block; width: 100%; height: auto; background: #0d1017; }
+    figcaption {
+      padding: 10px 14px; font-size: 12.5px; color: var(--faint);
+      border-top: 1px solid var(--border); background: var(--panel-2);
+    }
+    figcaption .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent); margin-right: 7px; vertical-align: middle;
+    }
+
+    /* Hero shot gets a touch more presence */
+    figure.hero-shot { box-shadow: 0 18px 56px rgba(0,0,0,.5); border-color: #343b49; }
+
+    /* Divider */
+    .rule { border: none; border-top: 1px solid var(--border); margin: 72px 0 0; }
+
+    /* "How it works" cards */
+    .how { display: grid; gap: 12px; margin-top: 24px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+    .card h3 { font-size: 15px; font-weight: 600; margin: 0 0 5px; color: var(--text); }
+    .card p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+    .card code { font-size: .85em; }
+
+    /* Hard NOT list */
+    .nots { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 9px; }
+    .nots li {
+      display: flex; align-items: flex-start; gap: 11px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 11px 14px; font-size: 14.5px; color: var(--text);
+    }
+    .nots li .x {
+      flex: 0 0 auto; color: var(--red); font-weight: 700; line-height: 1.5;
+      font-family: var(--mono); font-size: 13px;
+    }
+    .nots li span.body { color: var(--muted); }
+    .nots li span.body b { color: var(--text); font-weight: 600; }
+
+    /* Footer */
+    footer {
+      margin-top: 80px; padding-top: 28px; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      color: var(--faint); font-size: 13.5px;
+    }
+    footer .mk { font-weight: 650; color: var(--text); }
+    footer .mk .dot { color: var(--accent); }
+    footer .ver {
+      font-family: var(--mono); font-size: 12px; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; background: var(--panel-2);
+    }
+
+    @media (max-width: 560px) {
+      .wrap { padding: 40px 18px 72px; }
+      .hero h1 { font-size: 30px; }
+      h2.step { font-size: 21px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="wordmark">Menagerie<span class="dot">.</span></span>
+    <span class="tag">walkthrough</span>
+    <span class="spacer"></span>
+    <a class="gh" href="https://github.com/NakliTechie/menagerie">GitHub</a>
+  </div>
+
+  <main class="wrap">
+
+    <!-- Hero / intro -->
+    <header class="hero">
+      <div class="mk">A guided tour · v1.0</div>
+      <h1>Menagerie<span class="dot">.</span></h1>
+      <p class="lede">One browser tab. Many coding agents. Anywhere they run.</p>
+      <p>
+        Menagerie is a <strong>zero-server, vendor-neutral, browser-native</strong> control console
+        for fleets of coding agents — mini-swe-agent, claude-code, codex, opencode, aider, and any
+        TUI agent you wire up. The browser tab is the brain; small user-installed <strong>relays</strong>
+        sit next to each agent and stream PTY bytes over WebSocket.
+      </p>
+      <p>
+        No NakliTechie server. No accounts. No telemetry. <strong>You own every piece</strong> —
+        agents, relays, sessions, trajectories. This tour walks the v1.0 golden path: pick a workspace,
+        register a relay, spawn an agent, watch it run, fill a tab with a fleet, and replay a finished session.
+      </p>
+    </header>
+
+    <!-- STEP 1 -->
+    <p class="section-eyebrow">Step 1 · First launch</p>
+    <section class="step">
+      <h2 class="step"><span class="step-num">01</span>Pick a workspace folder</h2>
+      <p>
+        On first launch Menagerie asks for a folder it will own. Registered relays and captured
+        trajectories live there — <strong>nothing leaves your machine</strong>. The handle is persisted
+        so the same workspace reloads next time.
+      </p>
+      <figure>
+        <img loading="lazy" src="screenshots/01-workspace-prompt.jpg"
+             alt="First-launch overlay prompting the user to choose a folder for Menagerie state"
+             onerror="this.closest('figure').style.display='none'" />
+        <figcaption><span class="dot"></span>The folder picker on first launch — relays, session metadata, and trajectories live in a folder you choose and own.</figcaption>
+      </figure>
+    </section>
+
+    <!-- STEP 2 -->
+    <p class="section-eyebrow">Step 2 · Connect a host</p>
+    <section class="step">
+      <h2 class="step"><span class="step-num">02</span>Register a relay</h2>
+      <p>
+        Open Settings, paste the relay URL and its registration token (printed by
+        <code>menagerie-relay token print</code>), and add it. The browser opens a WebSocket, receives the
+        relay's <code>hello</code>, and registers. Once connected, the relay shows a green dot with its
+        host OS / arch and the agents it can spawn.
+      </p>
+      <figure>
+        <img loading="lazy" src="screenshots/02-relay-connected.jpg"
+             alt="Settings panel showing a relay registered and connected with a green status dot"
+             onerror="this.closest('figure').style.display='none'" />
+        <figcaption><span class="dot"></span>Settings → Relays: a registered relay, connected, advertising its host and agent list.</figcaption>
+      </figure>
+    </section>
+
+    <!-- STEP 3 -->
+    <p class="section-eyebrow">Step 3 · Start work</p>
+    <section class="step">
+      <h2 class="step"><span class="step-num">03</span>Spawn an agent</h2>
+      <p>
+        Hit <strong>+ Spawn</strong> and pick a relay, an agent, a working directory, and a task.
+        Agents are listed <strong>alphabetically — no featured agent, no promoted shim</strong>. The relay
+        mints a fresh session token per spawn and a tile appears.
+      </p>
+      <figure>
+        <img loading="lazy" src="screenshots/03-spawn-dialog.jpg"
+             alt="Spawn dialog with relay, agent, working directory, and task fields"
+             onerror="this.closest('figure').style.display='none'" />
+        <figcaption><span class="dot"></span>The spawn dialog: relay · agent (alphabetical) · working directory · task.</figcaption>
+      </figure>
+    </section>
+
+    <!-- STEP 4 -->
+    <p class="section-eyebrow">Step 4 · Observe and steer</p>
+    <section class="step">
+      <h2 class="step"><span class="step-num">04</span>Watch it run</h2>
+      <p>
+        A live tile carries a status dot, the <code>agent · relay · timer</code> header, and the agent's
+        terminal streaming through xterm.js. An input bar sends keystrokes straight to the PTY; the
+        <strong>kill</strong> button stops the agent. The dot turns red and the header pulses when the agent
+        needs input — answer without leaving the tab.
+      </p>
+      <figure>
+        <img loading="lazy" src="screenshots/04-live-agent.jpg"
+             alt="A single live agent tile streaming terminal output with an input bar and kill button"
+             onerror="this.closest('figure').style.display='none'" />
+        <figcaption><span class="dot"></span>A live tile — status dot, agent · relay · timer, streaming terminal, input bar, kill button.</figcaption>
+      </figure>
+    </section>
+
+    <!-- STEP 5 -->
+    <p class="section-eyebrow">Step 5 · Scale up</p>
+    <section class="step">
+      <h2 class="step"><span class="step-num">05</span>A fleet in one tab</h2>
+      <p>
+        Tiles flow into a flat auto-fit grid. Spawn as many as the screen holds — several agents on one or
+        more relays, all updating in real time, in a single browser tab. One WebSocket per relay carries
+        every tile on that host.
+      </p>
+      <figure class="hero-shot">
+        <img loading="lazy" src="screenshots/05-multi-agent-panel.jpg"
+             alt="A grid of several agent tiles running simultaneously in one browser tab"
+             onerror="this.closest('figure').style.display='none'" />
+        <figcaption><span class="dot"></span>The flat grid with a fleet of agents running at once — the whole point of Menagerie.</figcaption>
+      </figure>
+    </section>
+
+    <!-- STEP 6 -->
+    <p class="section-eyebrow">Step 6 · Look back</p>
+    <section class="step">
+      <h2 class="step"><span class="step-num">06</span>Replay a trajectory</h2>
+      <p>
+        Every session's raw PTY bytes are captured to your workspace folder. Open a past session and it
+        re-renders losslessly through xterm.js, with <strong>play, scrub, and speed</strong> controls
+        (1x / 2x / 4x / instant). Close the tab, reopen later — the trajectory is still there.
+      </p>
+      <figure>
+        <img loading="lazy" src="screenshots/06-replay.jpg"
+             alt="A replay tile re-rendering a past session from captured PTY bytes with play, scrub, and speed controls"
+             onerror="this.closest('figure').style.display='none'" />
+        <figcaption><span class="dot"></span>Replay: a finished session re-rendered from its captured PTY bytes, with play / scrub / speed.</figcaption>
+      </figure>
+    </section>
+
+    <hr class="rule" />
+
+    <!-- HOW IT WORKS -->
+    <p class="section-eyebrow">Under the hood</p>
+    <h2 class="step">How it works</h2>
+    <div class="how">
+      <div class="card">
+        <h3>The browser tab is the brain</h3>
+        <p>A single static HTML file is the entire control surface. No daemon to run, no service to install on your own machine — open a URL and you have the console.</p>
+      </div>
+      <div class="card">
+        <h3>Relays sit next to the agents</h3>
+        <p>You install a small relay on each host where agents run. It allocates a PTY per agent and streams bytes. The relay is <em>yours</em>, not NakliTechie's — pick the Go binary, a Python script, or an edge Worker.</p>
+      </div>
+      <div class="card">
+        <h3>One WebSocket per relay</h3>
+        <p>The browser keeps a single connection to each relay; every tile on that host multiplexes over it by <code>session_id</code>. A per-session token, minted on spawn, gates input, signals, and resume.</p>
+      </div>
+      <div class="card">
+        <h3>FSA persistence — you own the files</h3>
+        <p>State lives in a folder you grant via the File System Access API: <code>relays.json</code>, session metadata, and raw <code>.pty</code> byte streams. No backend database, no localStorage for secrets, nothing that phones home.</p>
+      </div>
+      <div class="card">
+        <h3>The protocol is the durable artifact</h3>
+        <p>The WebSocket protocol is published and versioned — the app is just one consumer of it. Anyone can write a relay or a shim. And it doubles as the agent SDK: anything the browser can do, a supervisor agent can do over the same protocol.</p>
+      </div>
+    </div>
+
+    <!-- HARD NOTS -->
+    <p class="section-eyebrow">Commitments</p>
+    <h2 class="step">Hard NOT-to-do</h2>
+    <p class="step" style="margin-bottom:4px">These don't soften. If a feature requires breaking one of them, the feature doesn't ship.</p>
+    <ul class="nots">
+      <li><span class="x">✕</span><span class="body"><b>No server.</b> No NakliTechie-hosted backend, ever — not even an optional one. The only thing served is a static HTML file.</span></li>
+      <li><span class="x">✕</span><span class="body"><b>No telemetry.</b> The relay doesn't phone home. The browser doesn't phone home. No analytics on how you use your agents.</span></li>
+      <li><span class="x">✕</span><span class="body"><b>No accounts.</b> No login, no "Menagerie account," no subscription, no premium tier, no cloud.</span></li>
+      <li><span class="x">✕</span><span class="body"><b>No vendor preference.</b> Agent types are listed alphabetically. No featured agent, no promoted shim, no bundled MCP.</span></li>
+      <li><span class="x">✕</span><span class="body"><b>No lock-in.</b> The protocol spec is published; anyone can write a relay or shim. Relay tokens never leave your browser's FSA / Vault.</span></li>
+    </ul>
+
+    <footer>
+      <span class="mk">Menagerie<span class="dot">.</span></span>
+      <span class="ver">v1.0</span>
+      <span class="spacer"></span>
+      <a href="https://github.com/NakliTechie/menagerie">github.com/NakliTechie/menagerie</a>
+    </footer>
+
+  </main>
+</body>
+</html>
