@@ -1,0 +1,11 @@
+{
+  // Menagerie is a single static HTML file served as Cloudflare static assets.
+  // `npx wrangler deploy` (Cloudflare's default) uploads ./apps/menagerie as
+  // assets — there is no Worker script, just files.
+  "name": "menagerie",
+  "compatibility_date": "2026-05-28",
+  "assets": {
+    "directory": "./apps/menagerie",
+    "not_found_handling": "single-page-application"
+  }
+}
