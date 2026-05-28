@@ -30,31 +30,16 @@
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
-    body {
-      margin: 0; background: var(--bg); color: var(--text);
-      font-family: var(--sans); font-size: 14px; line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
-    }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
     button { font-family: inherit; font-size: inherit; cursor: pointer; }
     input, select, textarea { font-family: inherit; font-size: inherit; }
 
-    /* ---- top bar ---- */
-    .topbar {
-      display: flex; align-items: center; gap: 16px;
-      height: 52px; padding: 0 16px;
-      background: var(--panel); border-bottom: 1px solid var(--border);
-      position: sticky; top: 0; z-index: 10;
-    }
+    .topbar { display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
     .wordmark { font-weight: 650; letter-spacing: 0.2px; font-size: 15px; }
     .wordmark .dot { color: var(--accent); }
     .workspace { color: var(--muted); font-size: 13px; }
     .spacer { flex: 1; }
-    .btn {
-      display: inline-flex; align-items: center; gap: 7px;
-      background: var(--elev); color: var(--text);
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      padding: 7px 12px; transition: background .12s, border-color .12s;
-    }
+    .btn { display: inline-flex; align-items: center; gap: 7px; background: var(--elev); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 12px; transition: background .12s, border-color .12s; }
     .btn:hover { background: #2a303d; }
     .btn:active { transform: translateY(1px); }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: #0b0d12; font-weight: 600; }
@@ -62,15 +47,11 @@
     .btn.ghost { background: transparent; }
     .btn.icon { padding: 7px 9px; }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn.lg { padding: 10px 18px; font-size: 15px; }
 
-    /* ---- layout ---- */
     .main { padding: 18px; max-width: 1500px; margin: 0 auto; }
     .relay-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-    .relay-chip {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: var(--panel); border: 1px solid var(--border);
-      border-radius: 999px; padding: 5px 12px 5px 10px; font-size: 13px;
-    }
+    .relay-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px 5px 10px; font-size: 13px; }
     .relay-chip .name { font-weight: 550; }
     .relay-chip .host { color: var(--faint); font-size: 12px; }
 
@@ -81,43 +62,30 @@
     .s-error { background: var(--red); }
     .s-closed, .s-exited { background: var(--grey); box-shadow: none; }
     .s-needs_input { background: var(--red); box-shadow: 0 0 0 3px rgba(248,81,73,.18); animation: pulse 1.1s ease-in-out infinite; }
+    .s-replay { background: var(--accent); }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 
-    .grid {
-      display: grid; gap: 14px;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    }
-    .empty {
-      border: 1px dashed var(--border); border-radius: var(--radius);
-      padding: 48px 24px; text-align: center; color: var(--muted);
-      background: linear-gradient(180deg, var(--panel), transparent);
-    }
+    .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+    .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--muted); background: linear-gradient(180deg, var(--panel), transparent); }
     .empty h2 { color: var(--text); font-size: 16px; font-weight: 600; margin: 0 0 6px; }
     .empty p { margin: 0 0 16px; }
 
-    /* ---- tile ---- */
     .tile { display: flex; flex-direction: column; height: 380px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
     .tile.focused { border-color: var(--accent); }
-    .tile-head { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-bottom: 1px solid var(--border); background: var(--panel-2); cursor: default; }
+    .tile-head { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
     .tile-title { font-size: 12.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tile-title .sub { color: var(--faint); font-weight: 400; }
     .tile-term { flex: 1; min-height: 0; background: #0d1017; overflow: hidden; }
     .tile-input { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
     .tile-input input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 9px; outline: none; font-family: var(--mono); font-size: 12.5px; }
     .tile-input input:focus { border-color: var(--accent); }
+    .replay-controls { display: flex; gap: 9px; align-items: center; padding: 8px 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+    .replay-controls input[type=range] { flex: 1; accent-color: var(--accent); }
+    .replay-controls select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
 
-    /* ---- modal ---- */
-    .scrim {
-      position: fixed; inset: 0; background: rgba(0,0,0,.55);
-      display: none; align-items: flex-start; justify-content: center;
-      padding: 64px 16px; z-index: 50; backdrop-filter: blur(2px);
-    }
+    .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; padding: 64px 16px; z-index: 50; backdrop-filter: blur(2px); overflow:auto; }
     .scrim.open { display: flex; }
-    .modal {
-      background: var(--panel); border: 1px solid var(--border);
-      border-radius: var(--radius); width: 100%; max-width: 460px;
-      box-shadow: 0 16px 48px rgba(0,0,0,.5); overflow: hidden;
-    }
+    .modal { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 460px; box-shadow: 0 16px 48px rgba(0,0,0,.5); overflow: hidden; }
     .modal header { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
     .modal header h2 { margin: 0; font-size: 15px; font-weight: 600; }
     .modal .body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
@@ -125,34 +93,39 @@
 
     .field { display: flex; flex-direction: column; gap: 5px; }
     .field label { font-size: 12.5px; color: var(--muted); }
-    .field input, .field select, .field textarea {
-      background: var(--bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      padding: 8px 10px; outline: none; width: 100%;
-    }
+    .field input, .field select, .field textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; outline: none; width: 100%; }
     .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
     .field textarea { resize: vertical; min-height: 64px; }
     .hint { font-size: 12px; color: var(--faint); }
     .row { display: flex; gap: 8px; align-items: flex-end; }
     .row .field { flex: 1; }
-
     .note { font-size: 12.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px; }
     .inline-error { color: var(--red); font-size: 12.5px; min-height: 1em; }
     .inline-ok { color: var(--green); font-size: 12.5px; min-height: 1em; }
 
-    .relay-list { display: flex; flex-direction: column; gap: 8px; }
-    .relay-row { display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px; }
-    .relay-row .meta { flex: 1; min-width: 0; }
-    .relay-row .meta .n { font-weight: 550; }
-    .relay-row .meta .u { color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .link { color: var(--accent); background: none; border: none; padding: 0; }
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .list-row { display: flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px; }
+    .list-row .meta { flex: 1; min-width: 0; }
+    .list-row .meta .n { font-weight: 550; }
+    .list-row .meta .u { color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .link { color: var(--accent); background: none; border: none; padding: 0; cursor: pointer; }
     .link.danger { color: var(--red); }
+
+    /* first-launch / reconnect workspace overlay */
+    .ws-overlay { position: fixed; inset: 0; background: radial-gradient(1200px 600px at 50% -10%, #1a1f2b, var(--bg)); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .ws-overlay.open { display: flex; }
+    .ws-card { text-align: center; max-width: 460px; padding: 40px 32px; }
+    .ws-card .mk { font-weight: 650; font-size: 20px; margin-bottom: 14px; }
+    .ws-card .mk .dot { color: var(--accent); }
+    .ws-card h1 { font-size: 18px; margin: 0 0 8px; }
+    .ws-card p { color: var(--muted); margin: 0 0 22px; }
+    .ws-card .err { color: var(--red); font-size: 12.5px; margin-top: 14px; min-height: 1em; }
   </style>
 </head>
 <body>
   <div class="topbar">
     <span class="wordmark">Menagerie<span class="dot">.</span></span>
-    <span class="workspace" id="workspace">in-memory (FSA persistence: P4)</span>
+    <span class="workspace" id="workspace">no workspace</span>
     <span class="spacer"></span>
     <button class="btn primary" id="spawnBtn">+ Spawn</button>
     <button class="btn icon ghost" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
@@ -171,11 +144,12 @@
       <div class="body">
         <div>
           <div class="section-title">Workspace</div>
-          <div class="note">FSA persistence lands in P4. For now relays live in memory and are cleared on reload.</div>
+          <div class="list-row"><div class="meta"><div class="n" id="wsName">—</div><div class="u" id="wsHint">where Menagerie stores relays + session trajectories</div></div>
+            <button class="link" id="changeFolderBtn">Change folder</button></div>
         </div>
         <div>
           <div class="section-title">Relays</div>
-          <div class="relay-list" id="relayList"></div>
+          <div class="list" id="relayList"></div>
           <div style="height:10px"></div>
           <div class="field"><label for="relayUrl">Relay URL</label>
             <input id="relayUrl" placeholder="ws://127.0.0.1:7878" autocomplete="off" spellcheck="false" /></div>
@@ -186,6 +160,10 @@
           <div class="row"><button class="btn primary" id="addRelayBtn">Add relay</button></div>
           <div style="height:6px"></div>
           <div class="inline-error" id="addRelayError"></div>
+        </div>
+        <div>
+          <div class="section-title">Past sessions</div>
+          <div class="list" id="pastList"></div>
         </div>
       </div>
     </div>
@@ -210,33 +188,121 @@
     </div>
   </div>
 
+  <!-- First-launch / reconnect workspace overlay -->
+  <div class="ws-overlay" id="wsOverlay">
+    <div class="ws-card">
+      <div class="mk">Menagerie<span class="dot">.</span></div>
+      <h1 id="wsTitle">Pick a folder to store your Menagerie state</h1>
+      <p id="wsBody">Relays, session metadata, and trajectories live in a folder you choose and own. Nothing leaves your machine.</p>
+      <button class="btn primary lg" id="wsPickBtn">Choose folder…</button>
+      <button class="btn lg" id="wsSkipBtn" style="margin-left:8px">Skip (in-memory)</button>
+      <div class="err" id="wsErr"></div>
+    </div>
+  </div>
+
   <script type="module">
-    // ---- Menagerie app (P3) --------------------------------------------
-    // In-memory state. FSA persistence + reconnect/replay are P4.
+    // ---- Menagerie app (P4) --------------------------------------------
+    // FSA-backed persistence (relays.json + session meta + PTY streams) + replay.
+    // Live reconnect-resume is deferred; on reload the browser replays from FSA.
     const PROTOCOL_VERSION = "1.0";
     const TERM_THEME = { background: "#0d1017", foreground: "#d6d9df", cursor: "#6ea8fe", selectionBackground: "#2a3550" };
     const TERM_FONT = (getComputedStyle(document.documentElement).getPropertyValue("--mono").trim()) || "monospace";
     const TERM_SIZE = 13, TERM_LH = 1.2;
+    const MENAGERIE_DIR = ".menagerie", SESSIONS_DIR = "sessions", RELAYS_FILE = "relays.json";
 
-    const relays = [];               // {id,url,token,ws,status,name,hello,error}
-    const sessions = new Map();      // session_id -> session object
-    const pendingSpawns = new Set(); // client_id
+    const relays = [];
+    const sessions = new Map();
+    const pendingSpawns = new Set();
+    let rehydrating = false;
     const $ = (id) => document.getElementById(id);
 
-    // ---- relay connection ----
-    function addRelay(url, token) {
-      const relay = { id: crypto.randomUUID(), url, token, ws: null, status: "connecting", name: url, hello: null, error: null };
-      relays.push(relay);
-      connect(relay);
+    // ===== FSA storage layer ==========================================
+    const FS = {
+      handle: null, label: "in-memory",
+      ok() { return !!this.handle; },
+      async dir(...parts) { let h = this.handle; for (const p of parts) h = await h.getDirectoryHandle(p, { create: true }); return h; },
+      async fileHandle(parts, create) { const name = parts[parts.length - 1]; const d = await this.dir(...parts.slice(0, -1)); return d.getFileHandle(name, { create: !!create }); },
+      async writeText(parts, text) { const fh = await this.fileHandle(parts, true); const w = await fh.createWritable(); await w.write(text); await w.close(); },
+      async writeJSON(parts, obj) { await this.writeText(parts, JSON.stringify(obj, null, 2)); },
+      async appendBytes(parts, bytes) {
+        const fh = await this.fileHandle(parts, true); const f = await fh.getFile();
+        const w = await fh.createWritable({ keepExistingData: true });
+        await w.write({ type: "write", position: f.size, data: bytes }); await w.close();
+      },
+      async readFile(parts) { try { const fh = await this.fileHandle(parts, false); return await fh.getFile(); } catch { return null; } },
+      async readJSON(parts) { const f = await this.readFile(parts); return f ? JSON.parse(await f.text()) : null; },
+      async readBytes(parts) { const f = await this.readFile(parts); return f ? new Uint8Array(await f.arrayBuffer()) : null; },
+      async listSessionMetas() {
+        const out = [];
+        try { const d = await this.dir(MENAGERIE_DIR, SESSIONS_DIR);
+          for await (const [name, h] of d.entries()) if (h.kind === "file" && name.endsWith(".meta.json")) out.push(name);
+        } catch {}
+        return out;
+      },
+    };
+
+    // IndexedDB: persist the workspace directory handle.
+    function idb() { return new Promise((res, rej) => { const r = indexedDB.open("menagerie", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+    async function idbPut(k, v) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readonly"); const rq = tx.objectStore("kv").get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
+
+    async function pickWorkspace() {
+      if (!window.showDirectoryPicker) { wsError("This browser doesn't support the File System Access API. Use Skip (in-memory)."); return false; }
+      let handle;
+      try { handle = await window.showDirectoryPicker({ id: "menagerie", mode: "readwrite" }); }
+      catch (e) { if (e && e.name === "AbortError") return false; wsError("Could not open folder: " + e.message); return false; }
+      await idbPut("workspace", handle);
+      await setWorkspace(handle, handle.name);
+      return true;
+    }
+    async function ensurePermission(handle, withGesture) {
+      const opts = { mode: "readwrite" };
+      if ((await handle.queryPermission(opts)) === "granted") return true;
+      if (withGesture && (await handle.requestPermission(opts)) === "granted") return true;
+      return false;
+    }
+    async function setWorkspace(handle, label) {
+      FS.handle = handle; FS.label = label || "workspace";
+      $("workspace").textContent = label || "workspace";
+      $("wsName").textContent = label || "workspace";
+      closeWorkspaceOverlay();
+      await rehydrate();
       renderAll();
-      return relay;
+    }
+    async function initWorkspace() {
+      let stored = null; try { stored = await idbGet("workspace"); } catch {}
+      if (stored) {
+        if (await ensurePermission(stored, false)) { await setWorkspace(stored, stored.name); return; }
+        openWorkspaceOverlay("reconnect", stored);
+      } else {
+        openWorkspaceOverlay("pick");
+      }
+    }
+
+    async function rehydrate() {
+      if (!FS.ok()) return;
+      rehydrating = true;
+      try {
+        const saved = await FS.readJSON([MENAGERIE_DIR, RELAYS_FILE]);
+        if (Array.isArray(saved)) for (const r of saved) if (!relays.some((x) => x.url === r.url)) addRelay(r.url, r.token, r.name);
+      } catch (e) { console.warn("rehydrate relays failed", e); }
+      rehydrating = false;
+      await refreshPastSessions();
+    }
+    async function persistRelays() {
+      if (!FS.ok() || rehydrating) return;
+      try { await FS.writeJSON([MENAGERIE_DIR, RELAYS_FILE], relays.map((r) => ({ name: r.name, url: r.url, token: r.token }))); }
+      catch (e) { console.warn("persist relays failed", e); }
+    }
+
+    // ===== relay connection ===========================================
+    function addRelay(url, token, name) {
+      const relay = { id: crypto.randomUUID(), url, token, ws: null, status: "connecting", name: name || url, hello: null, error: null };
+      relays.push(relay); connect(relay); persistRelays(); renderAll(); return relay;
     }
     function connect(relay) {
-      let ws;
-      try { ws = new WebSocket(relay.url); }
-      catch (e) { relay.status = "error"; relay.error = "bad URL: " + e.message; renderAll(); return; }
-      relay.ws = ws;
-      relay.status = "connecting"; relay.error = null;
+      let ws; try { ws = new WebSocket(relay.url); } catch (e) { relay.status = "error"; relay.error = "bad URL: " + e.message; renderAll(); return; }
+      relay.ws = ws; relay.status = "connecting"; relay.error = null;
       ws.addEventListener("message", (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } handleMessage(relay, m); });
       ws.addEventListener("close", () => { if (relay.status !== "error") relay.status = "closed"; renderAll(); });
       ws.addEventListener("error", () => {});
@@ -245,68 +311,109 @@
     function removeRelay(id) {
       const i = relays.findIndex((r) => r.id === id); if (i < 0) return;
       try { relays[i].ws && relays[i].ws.close(); } catch {}
-      relays.splice(i, 1); renderAll();
+      relays.splice(i, 1); persistRelays(); renderAll();
     }
 
     function handleMessage(relay, msg) {
       switch (msg.type) {
         case "hello":
-          relay.hello = msg; relay.name = msg.relay_name || relay.url;
-          if (msg.protocol_version && msg.protocol_version !== PROTOCOL_VERSION)
-            console.warn(`relay protocol ${msg.protocol_version} != app ${PROTOCOL_VERSION}; attempting anyway`);
-          send(relay, { type: "register", registration_token: relay.token });
-          break;
-        case "registered":
-          relay.status = "connected"; relay.error = null; break;
+          relay.hello = msg; if (!relay.name || relay.name === relay.url) relay.name = msg.relay_name || relay.url;
+          if (msg.protocol_version && msg.protocol_version !== PROTOCOL_VERSION) console.warn(`relay protocol ${msg.protocol_version} != app ${PROTOCOL_VERSION}`);
+          send(relay, { type: "register", registration_token: relay.token }); break;
+        case "registered": relay.status = "connected"; relay.error = null; break;
         case "spawned": {
-          pendingSpawns.delete(msg.client_id);
-          closeModal("spawnScrim");
-          const sess = { id: msg.session_id, relayId: relay.id, relayName: relay.name, agent: msg.agent,
-            token: msg.session_token, status: "running", startedAt: Date.now(), cols: 0, rows: 0, term: null };
+          pendingSpawns.delete(msg.client_id); closeModal("spawnScrim");
+          const sess = { id: msg.session_id, relayId: relay.id, relayName: relay.name, agent: msg.agent, token: msg.session_token,
+            status: "running", startedAt: Date.now(), cols: 0, rows: 0, term: null, pending: [], flushing: false };
           sessions.set(sess.id, sess);
           if (window.Terminal) createTile(sess); else showSpawnResult("xterm.js failed to load", false);
+          writeSessionMeta(sess);
           break;
         }
         case "output": {
           const s = sessions.get(msg.session_id); if (!s || !s.term) break;
-          s.term.write(bytesFromB64(msg.data));
+          const bytes = bytesFromB64(msg.data);
+          s.term.write(bytes);
+          if (FS.ok()) s.pending.push(bytes);
           if (s.status === "needs_input" || s.status === "idle") setSessionStatus(s, "running");
           break;
         }
         case "event": {
           const s = sessions.get(msg.session_id); if (!s) break;
           if (msg.event === "exited") {
-            setSessionStatus(s, "exited"); s.tile.classList.add("exited");
+            setSessionStatus(s, "exited"); s.tile && s.tile.classList.add("exited");
             if (s.ti) s.ti.disabled = true; if (s.sendBtn) s.sendBtn.disabled = true;
             if (s.timer) clearInterval(s.timer);
             if (s.term) s.term.write(`\r\n\x1b[90m— exited (code ${msg.exit_code}) —\x1b[0m\r\n`);
+            s.endedAt = Date.now(); s.exitCode = msg.exit_code;
+            flushSession(s).then(() => writeSessionMeta(s)).then(refreshPastSessions);
           } else if (msg.event === "needs_input") setSessionStatus(s, "needs_input");
           else if (msg.event === "idle") setSessionStatus(s, "idle");
-          updateAttention();
-          break;
+          updateAttention(); break;
         }
         case "error":
           if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} }
           else showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
           break;
-        case "resume_failed": break; // P4
+        case "resume_failed": break;
       }
       renderAll();
     }
 
-    // ---- sessions / tiles ----
+    // ===== session persistence ========================================
+    async function writeSessionMeta(sess) {
+      if (!FS.ok()) return;
+      try { await FS.writeJSON([MENAGERIE_DIR, SESSIONS_DIR, sess.id + ".meta.json"], {
+        id: sess.id, agent: sess.agent, relay_name: sess.relayName, cwd: sess.cwd || "",
+        started_at: new Date(sess.startedAt).toISOString(),
+        ended_at: sess.endedAt ? new Date(sess.endedAt).toISOString() : null,
+        exit_code: (sess.exitCode === undefined ? null : sess.exitCode),
+      }); } catch (e) { console.warn("write meta failed", e); }
+    }
+    async function flushSession(sess) {
+      if (!FS.ok() || sess.flushing || !sess.pending || sess.pending.length === 0) return;
+      sess.flushing = true; const chunks = sess.pending; sess.pending = [];
+      try { await FS.appendBytes([MENAGERIE_DIR, SESSIONS_DIR, sess.id + ".pty"], concatChunks(chunks)); }
+      catch (e) { console.warn("pty flush failed", e); sess.pending = chunks.concat(sess.pending); }
+      finally { sess.flushing = false; }
+    }
+    setInterval(() => { for (const s of sessions.values()) if (s.status !== "exited") flushSession(s); }, 1500);
+
+    function concatChunks(chunks) { let n = 0; for (const c of chunks) n += c.length; const out = new Uint8Array(n); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; } return out; }
+
+    async function refreshPastSessions() {
+      const el = $("pastList"); if (!el) return; el.innerHTML = "";
+      if (!FS.ok()) { el.innerHTML = `<div class="hint">Pick a workspace folder to keep session history.</div>`; return; }
+      const names = await FS.listSessionMetas();
+      if (names.length === 0) { el.innerHTML = `<div class="hint">No past sessions yet.</div>`; return; }
+      const metas = [];
+      for (const n of names) { const m = await FS.readJSON([MENAGERIE_DIR, SESSIONS_DIR, n]); if (m) metas.push(m); }
+      metas.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
+      for (const m of metas) {
+        const row = document.createElement("div"); row.className = "list-row";
+        const dot = document.createElement("span"); dot.className = "dot-status s-exited";
+        const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
+        meta.querySelector(".n").textContent = `${m.agent} · ${m.relay_name || ""}`;
+        meta.querySelector(".u").textContent = new Date(m.started_at).toLocaleString() + (m.exit_code != null ? ` · exit ${m.exit_code}` : "");
+        const btn = document.createElement("button"); btn.className = "link"; btn.textContent = "Replay";
+        btn.addEventListener("click", () => { closeAllModals(); openReplay(m); });
+        row.append(dot, meta, btn); el.appendChild(row);
+      }
+    }
+
+    // ===== sessions / tiles ===========================================
     function spawn(relayId, agent, cwd, task, customCmd) {
       const relay = relays.find((r) => r.id === relayId);
       if (!relay || relay.status !== "connected") { showSpawnResult("relay not connected", false); return; }
-      const client_id = crypto.randomUUID();
-      pendingSpawns.add(client_id);
-      // Task goes through as args; the shim formats it (no per-agent logic here — hard NOT #6).
+      const client_id = crypto.randomUUID(); pendingSpawns.add(client_id);
       const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (task ? [task] : []);
+      window.__menagerie._pendingCwd = cwd;
       send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id });
       showSpawnResult("spawning…", true);
     }
 
     function createTile(sess) {
+      sess.cwd = window.__menagerie._pendingCwd || sess.cwd || "";
       const tile = document.createElement("div"); tile.className = "tile"; tile.dataset.sid = sess.id;
       const head = document.createElement("div"); head.className = "tile-head";
       const dot = document.createElement("span"); dot.className = "dot-status s-running"; dot.setAttribute("aria-label", "running");
@@ -317,7 +424,6 @@
       kill.addEventListener("click", () => signal(sess, "kill"));
       head.append(dot, title, spacer, kill);
       head.addEventListener("click", (e) => { if (e.target !== kill) focusTile(sess); });
-
       const termEl = document.createElement("div"); termEl.className = "tile-term";
       const bar = document.createElement("div"); bar.className = "tile-input";
       const ti = document.createElement("input"); ti.placeholder = "type input… (Enter to send)";
@@ -325,102 +431,107 @@
       const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
       sendBtn.addEventListener("click", () => { sendInput(sess, ti.value + "\n"); ti.value = ""; ti.focus(); });
       bar.append(ti, sendBtn);
-
-      tile.append(head, termEl, bar);
-      $("grid").appendChild(tile);
-
-      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH,
-        cursorBlink: true, scrollback: 2000, theme: TERM_THEME, screenReaderMode: true });
-      term.open(termEl);
-      term.onData((d) => sendInput(sess, d));
+      tile.append(head, termEl, bar); $("grid").appendChild(tile);
+      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: true, scrollback: 2000, theme: TERM_THEME, screenReaderMode: true });
+      term.open(termEl); term.onData((d) => sendInput(sess, d));
       Object.assign(sess, { term, tile, termEl, dot, ti, sendBtn });
-      fitTile(sess);
-      sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
+      fitTile(sess); sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
       updateEmpty(); focusTile(sess); term.focus();
     }
-
-    function focusTile(sess) {
-      document.querySelectorAll(".tile.focused").forEach((t) => t.classList.remove("focused"));
-      sess.tile.classList.add("focused");
-    }
+    function focusTile(sess) { document.querySelectorAll(".tile.focused").forEach((t) => t.classList.remove("focused")); sess.tile && sess.tile.classList.add("focused"); }
     function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } }
-    function sendInput(sess, data) {
-      const relay = relays.find((r) => r.id === sess.relayId);
-      if (!relay || sess.status === "exited") return;
-      send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data });
-    }
-    function signal(sess, sig, cols, rows) {
-      const relay = relays.find((r) => r.id === sess.relayId); if (!relay) return;
-      const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig };
-      if (sig === "resize") { m.cols = cols; m.rows = rows; }
-      send(relay, m);
-    }
-    function updateTimer(sess) {
-      const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return;
-      const s = Math.floor((Date.now() - sess.startedAt) / 1000);
-      el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
-    }
-    function updateAttention() {
-      const n = [...sessions.values()].filter((s) => s.status === "needs_input").length;
-      document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie";
-    }
+    function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited") return; send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
+    function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
+    function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+    function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
 
-    // manual fit (cdnjs 5.5.0 ships no fit addon)
     let _measureCtx;
     function cellWidth() { _measureCtx ||= document.createElement("canvas").getContext("2d"); _measureCtx.font = `${TERM_SIZE}px ${TERM_FONT}`; return _measureCtx.measureText("W").width || 8; }
     function fitTile(sess) {
       if (!sess.term || !sess.termEl) return;
       const w = sess.termEl.clientWidth, h = sess.termEl.clientHeight; if (w <= 0 || h <= 0) return;
-      const cols = Math.max(20, Math.floor((w - 18) / cellWidth()));
-      const rows = Math.max(6, Math.floor((h - 10) / (TERM_SIZE * TERM_LH)));
-      if (cols !== sess.cols || rows !== sess.rows) {
-        try { sess.term.resize(cols, rows); } catch {}
-        sess.cols = cols; sess.rows = rows;
-        if (sess.status !== "exited") signal(sess, "resize", cols, rows);
-      }
+      const cols = Math.max(20, Math.floor((w - 18) / cellWidth())), rows = Math.max(6, Math.floor((h - 10) / (TERM_SIZE * TERM_LH)));
+      if (cols !== sess.cols || rows !== sess.rows) { try { sess.term.resize(cols, rows); } catch {} sess.cols = cols; sess.rows = rows; if (sess.status !== "exited" && !sess.replay) signal(sess, "resize", cols, rows); }
+    }
+
+    // ===== replay =====================================================
+    async function openReplay(meta) {
+      const bytes = await FS.readBytes([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".pty"]);
+      if (!bytes) { alert("No trajectory captured for this session."); return; }
+      const r = { id: "replay-" + meta.id, agent: meta.agent, relayName: meta.relay_name || "", replay: true, status: "replay", bytes, pos: 0, playing: false, speed: 1, cols: 0, rows: 0 };
+      sessions.set(r.id, r); createReplayTile(r); updateEmpty();
+    }
+    function createReplayTile(r) {
+      const tile = document.createElement("div"); tile.className = "tile"; tile.dataset.sid = r.id;
+      const head = document.createElement("div"); head.className = "tile-head";
+      const dot = document.createElement("span"); dot.className = "dot-status s-replay";
+      const title = document.createElement("span"); title.className = "tile-title";
+      title.innerHTML = `${escapeHtml(r.agent)} <span class="sub">· ${escapeHtml(r.relayName)} · replay</span>`;
+      const spacer = document.createElement("span"); spacer.className = "spacer";
+      const close = document.createElement("button"); close.className = "btn icon ghost"; close.title = "Close"; close.textContent = "✕";
+      close.addEventListener("click", () => { r.playing = false; clearInterval(r.tick); tile.remove(); sessions.delete(r.id); updateEmpty(); });
+      head.append(dot, title, spacer, close);
+      const termEl = document.createElement("div"); termEl.className = "tile-term";
+      const ctrls = document.createElement("div"); ctrls.className = "replay-controls";
+      const playBtn = document.createElement("button"); playBtn.className = "btn icon ghost"; playBtn.textContent = "▶";
+      const scrub = document.createElement("input"); scrub.type = "range"; scrub.min = "0"; scrub.max = String(r.bytes.length); scrub.value = "0";
+      const speedSel = document.createElement("select"); for (const s of ["1x", "2x", "4x", "instant"]) { const o = document.createElement("option"); o.value = s; o.textContent = s; speedSel.appendChild(o); }
+      const posLbl = document.createElement("span"); posLbl.textContent = "0%";
+      ctrls.append(playBtn, scrub, speedSel, posLbl);
+      tile.append(head, termEl, ctrls); $("grid").appendChild(tile);
+      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: false, scrollback: 4000, theme: TERM_THEME, screenReaderMode: true });
+      term.open(termEl); Object.assign(r, { term, tile, termEl });
+      fitTile(r);
+      const renderTo = (pos) => { r.pos = Math.max(0, Math.min(pos, r.bytes.length)); term.reset(); term.write(r.bytes.slice(0, r.pos)); scrub.value = String(r.pos); posLbl.textContent = Math.round((r.pos / Math.max(1, r.bytes.length)) * 100) + "%"; };
+      const stop = () => { r.playing = false; clearInterval(r.tick); playBtn.textContent = "▶"; };
+      const stepBytes = () => Math.max(64, Math.ceil(r.bytes.length / 200)) * r.speed;
+      playBtn.addEventListener("click", () => {
+        if (speedSel.value === "instant") { renderTo(r.bytes.length); stop(); return; }
+        if (r.playing) { stop(); return; }
+        if (r.pos >= r.bytes.length) renderTo(0);
+        r.playing = true; playBtn.textContent = "⏸";
+        r.tick = setInterval(() => { if (r.pos >= r.bytes.length) { stop(); return; } renderTo(r.pos + stepBytes()); }, 50);
+      });
+      scrub.addEventListener("input", () => { stop(); renderTo(parseInt(scrub.value, 10)); });
+      speedSel.addEventListener("change", () => { r.speed = speedSel.value === "instant" ? 1 : parseInt(speedSel.value, 10); });
+      renderTo(0);
     }
 
     function bytesFromB64(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
     function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
-    // ---- rendering (relays + empty state; tiles persist) ----
+    // ===== rendering ==================================================
     function renderRelayStrip() {
       const el = $("relayStrip"); el.innerHTML = "";
       for (const r of relays) {
         const chip = document.createElement("div"); chip.className = "relay-chip";
         const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
         const name = document.createElement("span"); name.className = "name"; name.textContent = r.name;
-        const host = document.createElement("span"); host.className = "host";
-        host.textContent = r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status;
+        const host = document.createElement("span"); host.className = "host"; host.textContent = r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status;
         chip.append(dot, name, host); el.appendChild(chip);
       }
     }
+    function liveCount() { let n = 0; for (const s of sessions.values()) if (!s.replay) n++; return n; }
     function updateEmpty() {
       const el = $("emptyState");
-      if (sessions.size > 0) { el.style.display = "none"; return; }
+      if ($("grid").children.length > 0) { el.style.display = "none"; return; }
       el.style.display = ""; el.innerHTML = "";
       const connected = relays.some((r) => r.status === "connected");
       if (relays.length === 0) {
         el.innerHTML = `<h2>No relays yet</h2><p>Add a relay in Settings to connect to where your agents run.</p>`;
-        const b = document.createElement("button"); b.className = "btn"; b.textContent = "Open Settings";
-        b.addEventListener("click", () => openModal("settingsScrim")); el.appendChild(b);
-      } else if (!connected) {
-        el.innerHTML = `<h2>No connected relays</h2><p>Check the relay is running and the token matches.</p>`;
-      } else {
-        el.innerHTML = `<h2>No agents running</h2><p>Click <strong>+ Spawn</strong> to start one.</p>`;
-      }
+        const b = document.createElement("button"); b.className = "btn"; b.textContent = "Open Settings"; b.addEventListener("click", () => openModal("settingsScrim")); el.appendChild(b);
+      } else if (!connected) { el.innerHTML = `<h2>No connected relays</h2><p>Check the relay is running and the token matches.</p>`; }
+      else { el.innerHTML = `<h2>No agents running</h2><p>Click <strong>+ Spawn</strong> to start one.</p>`; }
     }
     function renderRelayList() {
       const el = $("relayList"); el.innerHTML = "";
       if (relays.length === 0) { const n = document.createElement("div"); n.className = "hint"; n.textContent = "No relays added yet."; el.appendChild(n); return; }
       for (const r of relays) {
-        const row = document.createElement("div"); row.className = "relay-row";
+        const row = document.createElement("div"); row.className = "list-row";
         const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
         const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
-        meta.querySelector(".n").textContent = r.name + (r.error ? ` — ${r.error}` : "");
-        meta.querySelector(".u").textContent = r.url;
-        const rm = document.createElement("button"); rm.className = "link danger"; rm.textContent = "Remove";
-        rm.addEventListener("click", () => removeRelay(r.id));
+        meta.querySelector(".n").textContent = r.name + (r.error ? ` — ${r.error}` : ""); meta.querySelector(".u").textContent = r.url;
+        const rm = document.createElement("button"); rm.className = "link danger"; rm.textContent = "Remove"; rm.addEventListener("click", () => removeRelay(r.id));
         row.append(dot, meta, rm); el.appendChild(row);
       }
     }
@@ -438,19 +549,24 @@
       for (const a of agents) { const o = document.createElement("option"); o.value = a; o.textContent = a; agentSel.appendChild(o); }
       $("customCmdField").style.display = agentSel.value === "custom" ? "" : "none";
     }
-    function renderAll() {
-      renderRelayStrip(); renderRelayList(); updateEmpty();
-      if ($("spawnScrim").classList.contains("open")) renderSpawnDialog();
-    }
+    function renderAll() { renderRelayStrip(); renderRelayList(); updateEmpty(); if ($("spawnScrim").classList.contains("open")) renderSpawnDialog(); }
 
-    // ---- modals ----
-    function openModal(id) { $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } }
+    // ===== workspace overlay + modals =================================
+    function openWorkspaceOverlay(mode, handle) {
+      const ov = $("wsOverlay"); ov.classList.add("open"); $("wsErr").textContent = "";
+      if (mode === "reconnect") { $("wsTitle").textContent = "Reconnect your Menagerie folder"; $("wsBody").textContent = `Grant access to "${handle.name}" again to load your relays and trajectories.`; $("wsPickBtn").textContent = "Reconnect"; ov._handle = handle; ov._mode = "reconnect"; }
+      else { $("wsTitle").textContent = "Pick a folder to store your Menagerie state"; $("wsBody").textContent = "Relays, session metadata, and trajectories live in a folder you choose and own. Nothing leaves your machine."; $("wsPickBtn").textContent = "Choose folder…"; ov._mode = "pick"; }
+    }
+    function closeWorkspaceOverlay() { $("wsOverlay").classList.remove("open"); }
+    function wsError(t) { $("wsErr").textContent = t; }
+
+    function openModal(id) { $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") refreshPastSessions(); }
     function closeModal(id) { $(id).classList.remove("open"); }
     function closeAllModals() { document.querySelectorAll(".scrim").forEach((s) => s.classList.remove("open")); }
-    function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")); }
+    function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")) || $("wsOverlay").classList.contains("open"); }
     function showSpawnResult(text, ok) { const el = $("spawnResult"); el.textContent = text; el.className = ok ? "inline-ok" : "inline-error"; }
 
-    // ---- wiring ----
+    // ===== wiring =====================================================
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
     $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
     $("spawnRelay").addEventListener("change", renderAgentOptions);
@@ -461,9 +577,14 @@
       if (!token) { err.textContent = "Registration token is required."; return; }
       addRelay(url, token); $("relayUrl").value = ""; $("relayToken").value = "";
     });
-    $("doSpawnBtn").addEventListener("click", () => {
-      spawn($("spawnRelay").value, $("spawnAgent").value, $("spawnCwd").value.trim(), $("spawnTask").value.trim(), $("spawnCustomCmd").value.trim());
+    $("doSpawnBtn").addEventListener("click", () => spawn($("spawnRelay").value, $("spawnAgent").value, $("spawnCwd").value.trim(), $("spawnTask").value.trim(), $("spawnCustomCmd").value.trim()));
+    $("changeFolderBtn").addEventListener("click", () => pickWorkspace());
+    $("wsPickBtn").addEventListener("click", async () => {
+      const ov = $("wsOverlay");
+      if (ov._mode === "reconnect" && ov._handle) { if (await ensurePermission(ov._handle, true)) { await setWorkspace(ov._handle, ov._handle.name); } else wsError("Permission denied."); }
+      else await pickWorkspace();
     });
+    $("wsSkipBtn").addEventListener("click", () => { FS.handle = null; FS.label = "in-memory"; $("workspace").textContent = "in-memory (not saved)"; $("wsName").textContent = "in-memory (not saved)"; closeWorkspaceOverlay(); renderAll(); });
     document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeAllModals(); }));
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeAllModals();
@@ -471,8 +592,12 @@
     });
     let _fitT; window.addEventListener("resize", () => { clearTimeout(_fitT); _fitT = setTimeout(() => { for (const s of sessions.values()) if (s.status !== "exited") fitTile(s); }, 150); });
 
+    window.__menagerie = { relays, sessions, addRelay, FS,
+      test: { async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
+              async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); } } };
+
     renderAll();
-    window.__menagerie = { relays, sessions, addRelay };
+    initWorkspace();
   </script>
 </body>
 </html>
