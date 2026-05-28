@@ -1,65 +1,73 @@
 # Menagerie
 
-> One browser tab. Many coding agents. Anywhere they run.
+**Run a whole fleet of coding agents — Claude Code, Codex, opencode, Aider, and friends — side by side in one browser tab.**
 
-> **Status:** scaffolding — v1.0 in progress. The relay binary and the hosted app don't exist yet; the quickstart below describes the v1.0 target, not current reality. Build phases live in [`SPEC.md`](./SPEC.md).
+![Menagerie: a fleet of coding agents in one browser tab](docs/hero.jpg)
 
-Menagerie is a browser-native control console for fleets of coding agents (mini-swe-agent, claude-code, codex, opencode, aider, swe-agent, and any TUI agent you wire up). The browser tab is the brain; small user-installed **relays** sit next to each agent and stream PTY bytes over WebSocket. **No NakliTechie server. No accounts. No telemetry.** You own every piece — agents, relays, sessions, trajectories.
+The page *is* the app. It streams each agent's terminal from small **relays** you run next to them. **No server we host, no account, no telemetry** — everything runs on your machines and nothing leaves them.
 
-The unit of UI is a **tile**: one agent, one terminal, one status pill, one input bar. Tiles arrange as a flat grid (v1.0) or — later — a nested supervisor tree.
+→ **Try it:** open **[menagerie.naklitechie.com](https://menagerie.naklitechie.com)**, then start a relay (below). It's also one static file — open `index.html` locally if you prefer.
 
-## Why it exists
+## Get going in ~2 minutes
 
-A category emerged in late 2025 / early 2026: browser dashboards for parallel coding agents (amux, clideck, ai-maestro). They all need a self-hosted server daemon, lean tool-specific, and treat sessions as flat lists. Menagerie's wedge is the shape they can't pivot to: **zero-server, vendor-neutral, supervisor-tree-aware** — for the person who refused to install another daemon.
+A relay is one small binary you run **once per machine** — not per agent. It launches and streams *every* agent on that box, so you start it once and leave it running.
 
-## Architecture
+**macOS / Linux — download & run** (no Go, no build step):
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Browser tab (menagerie.naklitechie.com — single HTML file)      │
-│  ─ Grid view (v1.0)  /  Tree view (v1.1)                         │
-│  ─ Vault (BYOK + relay tokens) · History (trajectory archive)   │
-│  ─ xterm.js per tile · Relay registry (FSA-backed)              │
-└──────┬──────────────┬──────────────┬──────────────┬─────────────┘
-       │ WSS          │ WSS          │ WSS          │ WSS
-   ┌───▼───┐      ┌───▼───┐      ┌───▼───┐      ┌───▼───┐
-   │ Relay │      │ Relay │      │ Relay │      │ Relay │
-   └───┬───┘      └───┬───┘      └───┬───┘      └───┬───┘
-   ┌───▼───┐      ┌───▼───┐      ┌───▼───┐      ┌───▼───┐
-   │ mini  │      │opencode│     │ codex │      │claude │
-   └───────┘      └───────┘      └───────┘      └───────┘
+```sh
+# Pick your platform: darwin-arm64 (Apple Silicon) · darwin-amd64 (Intel Mac)
+#                      linux-amd64 · linux-arm64
+curl -L -o menagerie-relay \
+  https://github.com/NakliTechie/menagerie/releases/latest/download/menagerie-relay-darwin-arm64
+chmod +x menagerie-relay
+./menagerie-relay init     # prints your registration token
+./menagerie-relay serve    # leave this running
 ```
 
-All relays speak the same protocol; the browser is agnostic to relay flavor.
+Then open the app and paste the token into **Settings** — a guided checklist walks you the rest of the way. Full step-by-step with screenshots: **[the walkthrough](https://menagerie.naklitechie.com/docs/walkthrough/)**.
 
-## Quickstart (v1.0 target — not yet shippable)
+> **Windows:** there's no native Windows build (the relay needs a Unix PTY) — run the **`linux-amd64`** binary inside **[WSL2](https://learn.microsoft.com/windows/wsl/install)**. The app reaches it over `localhost`, same as on Mac/Linux.
+>
+> **macOS Gatekeeper:** grabbing the binary with `curl` (above) runs clean — only *browser* downloads get quarantined. If you download it from the Releases page in a browser, clear the flag once: `xattr -dr com.apple.quarantine menagerie-relay`.
+>
+> **Prefer to build it?** `go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest`
 
-1. **Install a relay** on the host where your agents run (`curl … | sh` — coming with the first relay release).
-2. Open **menagerie.naklitechie.com** (coming with the first deploy).
-3. **Register** your relay: paste its registration token (`menagerie-relay token print`).
-4. Click **+**, pick relay + agent + working dir + task, hit **spawn**. Watch the tile stream.
+## How it works
+
+```
+   Browser tab (one static HTML file)          ── you own the state:
+   ─ grid of tiles · xterm.js per agent            relays + sessions +
+   ─ light / dark · drag · fullscreen · replay     trajectories, saved to
+        │         │          │                      a folder you pick (FSA)
+        │ WSS     │ WSS      │ WSS
+    ┌───▼──┐  ┌───▼──┐   ┌───▼──┐     each relay = one ~6 MB Go binary
+    │relay │  │relay │   │relay │     that owns the PTYs and speaks one
+    └──┬───┘  └──┬───┘   └──┬───┘     published WebSocket protocol
+   claude-code  codex    opencode …
+```
+
+Anything the browser can do, an agent can do too — **the protocol *is* the SDK** ([`protocol/protocol.md`](protocol/protocol.md)). A relay handles many agents at once; run more relays only for more *machines*.
+
+## What makes it different
+
+- **Zero-server, vendor-neutral** — no daemon we host, agents listed alphabetically, nothing bundled or promoted.
+- **You own the data** — sessions and full terminal trajectories live in your folder; replay any past run with a scrubber.
+- **Built for many at once** — live status per tile (running · needs-input · rate-limited · idle), a chime when an agent needs you, drag to reorder, fullscreen any tile.
+- **Survives refreshes** — relays keep running; reload the page and your live tiles re-attach.
 
 ## Repo layout
 
 ```
-protocol/        WebSocket protocol spec — the durable artifact (protocol.md + types.ts)
-index.html       Single-file browser app at the repo root (no build step)
-relay-go/        Reference relay: single Go binary
-docs/            quickstart · relay-setup · writing-a-shim · security-model
+index.html     the whole browser app (no build step)
+relay-go/      the reference relay — one Go binary (init · serve · token)
+protocol/      the WebSocket protocol — the durable artifact (protocol.md + types.ts)
+docs/          walkthrough · quickstart · relay-setup · writing-a-shim · security-model
 ```
 
-## Hard NOT-to-do
+## More
 
-No NakliTechie-hosted server, ever · no telemetry · no accounts · no vendor preference (agents listed alphabetically) · no bundled MCP · no locked-in protocol (spec published) · no relay-token persistence outside FSA/Vault · no usage analytics · no subscription · no "Menagerie cloud." Full list in [`VISION.md`](./VISION.md).
-
-## Design & process docs
-
-- [`VISION.md`](./VISION.md) — vision & roadmap
-- [`SPEC.md`](./SPEC.md) — locked-decisions index + build phases
-- [`HANDOFF-v1.0.md`](./HANDOFF-v1.0.md) — the full v1.0 build spec (authoritative detail)
-- [`walkthroughs.md`](./walkthroughs.md) — process/meta questions
-- [`DEFERRED.md`](./DEFERRED.md) — v1.1+ with triggers
+[`VISION.md`](VISION.md) · [`SPEC.md`](SPEC.md) · [`HANDOFF-v1.0.md`](HANDOFF-v1.0.md) · [`DEFERRED.md`](DEFERRED.md) — vision, locked decisions, full build spec, and what's deferred to v1.1+.
 
 ## License
 
-AGPL-3.0 (LICENSE file added in build phase P2).
+[AGPL-3.0](LICENSE).
