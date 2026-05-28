@@ -1,2 +1,7 @@
 .DS_Store
 plan/
+.claude/
+
+# Go build artifacts
+/menagerie-relay
+relay-go/menagerie-relay
