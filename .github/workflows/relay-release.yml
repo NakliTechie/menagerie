@@ -1,0 +1,66 @@
+name: relay-release
+
+# Cross-compile the relay and publish prebuilt binaries to a GitHub Release.
+# Triggered by pushing a `relay-v*` tag (e.g. `relay-v0.1.0`), or run manually.
+on:
+  push:
+    tags: ["relay-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (must already exist, e.g. relay-v0.1.0)"
+        required: true
+
+permissions:
+  contents: write # needed to create the release + upload assets
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: relay-go/go.mod
+
+      - name: Cross-compile (darwin/linux × amd64/arm64)
+        working-directory: relay-go
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for t in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            os="${t%/*}"; arch="${t#*/}"
+            echo "==> $os/$arch"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+              -trimpath -ldflags="-s -w" \
+              -o "dist/menagerie-relay-${os}-${arch}" ./cmd/menagerie-relay
+          done
+          cd dist
+          sha256sum menagerie-relay-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish release
+        working-directory: relay-go/dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          NOTES="Prebuilt \`menagerie-relay\` binaries — one per machine, runs all your agents on that host.
+
+          1. Download the file for your OS/arch below.
+          2. \`chmod +x menagerie-relay-*\`
+          3. macOS only — clear Gatekeeper: \`xattr -dr com.apple.quarantine menagerie-relay-*\`
+          4. \`./menagerie-relay-* init\` then \`./menagerie-relay-* serve\`
+
+          Verify with \`shasum -a 256 -c SHA256SUMS\`. No prebuilt for your platform? \`go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest\`."
+          # Idempotent: create the release, or just (re)upload assets if it already exists.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber menagerie-relay-* SHA256SUMS
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Menagerie relay $TAG" \
+              --notes "$NOTES" \
+              menagerie-relay-* SHA256SUMS
+          fi

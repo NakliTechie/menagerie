@@ -226,11 +226,15 @@
         <div class="note"><strong>How it works.</strong> This page <em>is</em> the whole app. It talks over WebSocket to small <em>relays</em> you run next to your agents (your laptop, a server, wherever). Each relay streams its agents' terminals here. No NakliTechie server, no account, no telemetry — nothing leaves your machines.</div>
         <div>
           <div class="section-title">Get going</div>
-          <p class="help-step-lede"><strong>1 · Run a relay.</strong> A relay is one small server you run <strong>once per machine</strong> — not per agent. It launches and streams every agent on that box, so leave it running. Most people run one on their laptop.</p>
+          <p class="help-step-lede"><strong>1 · Run a relay.</strong> One small server you run <strong>once per machine</strong> — not per agent; it launches and streams every agent on that box, so leave it running. <a href="https://github.com/NakliTechie/menagerie/releases/latest" target="_blank" rel="noopener">Download it for your OS</a>, then:</p>
+          <div class="cmd"><code>chmod +x menagerie-relay-* &amp;&amp; mv menagerie-relay-* menagerie-relay</code><button class="copybtn" type="button" data-cmd="chmod +x menagerie-relay-* &amp;&amp; mv menagerie-relay-* menagerie-relay">Copy</button></div>
+          <div class="cmd"><code>./menagerie-relay init</code><button class="copybtn" type="button" data-cmd="./menagerie-relay init">Copy</button></div>
+          <div class="cmd"><code>./menagerie-relay serve</code><button class="copybtn" type="button" data-cmd="./menagerie-relay serve">Copy</button></div>
+          <p class="help-step-lede" style="font-size:12.5px"><strong>macOS</strong> — clear Gatekeeper first:</p>
+          <div class="cmd"><code>xattr -dr com.apple.quarantine menagerie-relay</code><button class="copybtn" type="button" data-cmd="xattr -dr com.apple.quarantine menagerie-relay">Copy</button></div>
+          <p class="help-step-lede" style="font-size:12.5px">Prefer to build it? With Go (then drop the <code>./</code>):</p>
           <div class="cmd"><code>go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest</code><button class="copybtn" type="button" data-cmd="go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest">Copy</button></div>
-          <div class="cmd"><code>menagerie-relay init</code><button class="copybtn" type="button" data-cmd="menagerie-relay init">Copy</button></div>
-          <div class="cmd"><code>menagerie-relay serve</code><button class="copybtn" type="button" data-cmd="menagerie-relay serve">Copy</button></div>
-          <p class="help-step-lede"><strong>2 · Connect it.</strong> Open <strong>Settings (⚙)</strong> — the <em>localhost</em> relay is already listed there with a step-by-step that detects it and walks you through pasting the token. No Go? <a href="https://github.com/NakliTechie/menagerie/releases" target="_blank" rel="noopener">Download a binary</a>.</p>
+          <p class="help-step-lede"><strong>2 · Connect it.</strong> Open <strong>Settings (⚙)</strong> — the <em>localhost</em> relay is listed there with a step-by-step that detects it and walks you through pasting the token.</p>
           <p class="help-step-lede"><strong>3 · Spawn.</strong> Hit <strong>+ Spawn</strong>, pick an agent, and go. <strong>◐</strong> switches light / dark.</p>
         </div>
         <div class="help-links">
@@ -815,7 +819,7 @@
       const b = document.createElement("button"); b.className = "copybtn"; b.type = "button"; b.dataset.cmd = text; b.textContent = "Copy";
       d.append(code, b); return d;
     }
-    const RELEASES_URL = "https://github.com/NakliTechie/menagerie/releases";
+    const RELEASES_URL = "https://github.com/NakliTechie/menagerie/releases/latest";
     const INSTALL_CMD = "go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest";
 
     function renderRelayList() {
@@ -852,13 +856,22 @@
       const a = mkStep(1, s1, "Start the relay on this machine", s1 === "active" ? "not detected" : "", false);
       if (s1 === "active") {
         const p = document.createElement("p"); p.className = "hint"; p.style.margin = "4px 0 2px";
-        p.innerHTML = "One small server <strong>per machine</strong> (not per agent) — it runs all your agents on this box. Set up once, then leave it running.";
-        a.body.append(p, cmdRow(INSTALL_CMD), cmdRow("menagerie-relay init"), cmdRow("menagerie-relay serve"));
-        const foot = document.createElement("p"); foot.className = "hint"; foot.style.margin = "7px 0 0";
-        foot.innerHTML = `No Go? <a href="${RELEASES_URL}" target="_blank" rel="noopener">Download a binary</a>. · `;
+        p.innerHTML = "One small server <strong>per machine</strong> (not per agent) — it runs all your agents on this box. Download it, then run it (and leave it running):";
+        a.body.appendChild(p);
+        const dl = document.createElement("a"); dl.className = "btn primary"; dl.href = RELEASES_URL; dl.target = "_blank"; dl.rel = "noopener"; dl.textContent = "Download menagerie-relay"; dl.style.cssText = "display:inline-flex;text-decoration:none;margin:8px 0 2px";
+        a.body.appendChild(dl);
+        a.body.appendChild(cmdRow("chmod +x menagerie-relay-* && mv menagerie-relay-* menagerie-relay"));
+        const mac = document.createElement("p"); mac.className = "hint"; mac.style.margin = "7px 0 0"; mac.textContent = "macOS — clear Gatekeeper first:";
+        a.body.appendChild(mac);
+        a.body.appendChild(cmdRow("xattr -dr com.apple.quarantine menagerie-relay"));
+        a.body.append(cmdRow("./menagerie-relay init"), cmdRow("./menagerie-relay serve"));
+        const orgo = document.createElement("p"); orgo.className = "hint"; orgo.style.margin = "7px 0 0"; orgo.textContent = "Prefer to build it? With Go (then drop the ./):";
+        a.body.appendChild(orgo);
+        a.body.appendChild(cmdRow(INSTALL_CMD));
+        const foot = document.createElement("p"); foot.className = "hint"; foot.style.margin = "8px 0 0";
         const recheck = document.createElement("button"); recheck.className = "link"; recheck.textContent = "Recheck now";
         recheck.addEventListener("click", () => { clearTimeout(r.retryTimer); r.retries = 0; connect(r); });
-        foot.appendChild(recheck); a.body.appendChild(foot);
+        foot.appendChild(document.createTextNode("Started it? ")); foot.appendChild(recheck); a.body.appendChild(foot);
       }
       wrap.appendChild(a.st);
       // Step 2 — paste the registration token

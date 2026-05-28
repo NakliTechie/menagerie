@@ -171,13 +171,13 @@
         <em>every</em> agent on that box. Set it up once where your agents run (your laptop, a dev box, a server) and
         leave it running. Most people run exactly one, on their laptop — that's the <code>localhost</code> relay the app already lists.
       </p>
-      <p><strong>1 · Install it.</strong> With <a href="https://go.dev/dl/" target="_blank" rel="noopener">Go 1.21+</a>, one command puts <code>menagerie-relay</code> on your PATH:</p>
+      <p><strong>1 · Download it.</strong> Grab the prebuilt binary for your machine from <a href="https://github.com/NakliTechie/menagerie/releases/latest" target="_blank" rel="noopener">the latest release</a> — <code>darwin-arm64</code> (Apple Silicon), <code>darwin-amd64</code> (Intel Mac), <code>linux-amd64</code>, or <code>linux-arm64</code> — then make it runnable and give it a tidy name:</p>
+      <pre>chmod +x menagerie-relay-*
+mv menagerie-relay-* menagerie-relay
+<span class="c"># macOS only — clear Gatekeeper so it'll run:</span>
+xattr -dr com.apple.quarantine menagerie-relay</pre>
+      <p>Prefer to build it yourself? With <a href="https://go.dev/dl/" target="_blank" rel="noopener">Go 1.21+</a> — this puts <code>menagerie-relay</code> on your PATH, so drop the <code>./</code> from the commands below:</p>
       <pre>go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest</pre>
-      <p>No Go? Grab a prebuilt binary from <a href="https://github.com/NakliTechie/menagerie/releases" target="_blank" rel="noopener">Releases</a> when one is published, or build from source:</p>
-      <pre><span class="c"># build from source</span>
-git clone https://github.com/NakliTechie/menagerie
-cd menagerie/relay-go
-go build -o menagerie-relay ./cmd/menagerie-relay</pre>
       <p><strong>2 · Initialise it.</strong> Writes <code>~/.menagerie/relay.toml</code> with a generated registration token and a sensible default config.</p>
       <pre>./menagerie-relay init</pre>
       <p><strong>3 · Copy the registration token.</strong> The app needs it to authenticate against this relay. Print it any time:</p>
