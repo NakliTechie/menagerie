@@ -156,6 +156,8 @@
 
     /* Help / About modal */
     .help-lede { margin: 0; font-size: 14px; }
+    .help-step-lede { margin: 11px 0 0; font-size: 13.5px; color: var(--muted); }
+    .help-step-lede strong { color: var(--text); font-weight: 600; }
     .help-steps { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; color: var(--muted); }
     .help-steps strong { color: var(--text); }
     .help-steps code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: var(--text); }
@@ -166,6 +168,26 @@
     .footer-nav { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: center; background: var(--panel); border: 1px solid var(--border); padding: 6px 16px; border-radius: 999px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.12); z-index: 40; white-space: nowrap; }
     .footer-nav a { color: var(--accent); text-decoration: none; }
     .footer-nav a:hover { text-decoration: underline; }
+
+    /* Copyable command rows (help modal + guided relay setup) */
+    .cmd { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-top: 7px; }
+    .cmd code { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--text); overflow-x: auto; white-space: nowrap; }
+    .copybtn { flex: 0 0 auto; background: var(--elev); border: 1px solid var(--border); border-radius: 5px; padding: 3px 9px; font-size: 11.5px; color: var(--text); }
+    .copybtn:hover { background: var(--btn-hover); }
+    .copybtn.ok { color: var(--green); border-color: var(--green); }
+
+    /* Guided local-relay setup checklist */
+    .setup { display: flex; flex-direction: column; margin-bottom: 6px; }
+    .setup-step { display: flex; gap: 11px; padding: 11px 0; }
+    .setup-step + .setup-step { border-top: 1px solid var(--border); }
+    .setup-num { flex: 0 0 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 650; background: var(--panel-2); color: var(--faint); border: 1px solid var(--border); }
+    .setup-step[data-state="active"] .setup-num { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+    .setup-step[data-state="done"] .setup-num { background: var(--green); color: #fff; border-color: var(--green); }
+    .setup-body { flex: 1; min-width: 0; }
+    .setup-title { font-weight: 550; font-size: 13px; color: var(--text); }
+    .setup-step[data-state="pending"] .setup-title { color: var(--faint); }
+    .setup-title .st { font-weight: 400; font-size: 12px; color: var(--faint); margin-left: 6px; }
+    .setup-title .st.ok { color: var(--green); }
   </style>
 </head>
 <body>
@@ -204,12 +226,12 @@
         <div class="note"><strong>How it works.</strong> This page <em>is</em> the whole app. It talks over WebSocket to small <em>relays</em> you run next to your agents (your laptop, a server, wherever). Each relay streams its agents' terminals here. No NakliTechie server, no account, no telemetry — nothing leaves your machines.</div>
         <div>
           <div class="section-title">Get going</div>
-          <ol class="help-steps">
-            <li>Install &amp; start a relay next to your agents: <code>menagerie-relay init</code>, then <code>menagerie-relay serve</code>.</li>
-            <li>Pick a <strong>workspace folder</strong> — it stores your relays + session history, locally.</li>
-            <li>In <strong>Settings</strong> (the gear), add the relay's URL and registration token.</li>
-            <li>Hit <strong>+ Spawn</strong>, pick an agent, and go. The <strong>◐</strong> button switches light / dark.</li>
-          </ol>
+          <p class="help-step-lede"><strong>1 · Run a relay.</strong> A relay is one small server you run <strong>once per machine</strong> — not per agent. It launches and streams every agent on that box, so leave it running. Most people run one on their laptop.</p>
+          <div class="cmd"><code>go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest</code><button class="copybtn" type="button" data-cmd="go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest">Copy</button></div>
+          <div class="cmd"><code>menagerie-relay init</code><button class="copybtn" type="button" data-cmd="menagerie-relay init">Copy</button></div>
+          <div class="cmd"><code>menagerie-relay serve</code><button class="copybtn" type="button" data-cmd="menagerie-relay serve">Copy</button></div>
+          <p class="help-step-lede"><strong>2 · Connect it.</strong> Open <strong>Settings (⚙)</strong> — the <em>localhost</em> relay is already listed there with a step-by-step that detects it and walks you through pasting the token. No Go? <a href="https://github.com/NakliTechie/menagerie/releases" target="_blank" rel="noopener">Download a binary</a>.</p>
+          <p class="help-step-lede"><strong>3 · Spawn.</strong> Hit <strong>+ Spawn</strong>, pick an agent, and go. <strong>◐</strong> switches light / dark.</p>
         </div>
         <div class="help-links">
           <a class="btn" href="docs/walkthrough/index.html" target="_blank" rel="noopener">Walkthrough</a>
@@ -782,28 +804,104 @@
       } else if (!connected) { el.innerHTML = `<h2>No connected relays</h2><p>Check the relay is running and the token matches.</p>`; }
       else { el.innerHTML = `<h2>No agents running</h2><p>Click <strong>+ Spawn</strong> to start one.</p>`; }
     }
+    // Copy-to-clipboard for command rows (delegated handler wired below).
+    async function copyText(text, btn) {
+      try { await navigator.clipboard.writeText(text); if (btn) { btn.textContent = "Copied"; btn.classList.add("ok"); setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("ok"); }, 1200); } }
+      catch { if (btn) { btn.textContent = "Copy failed"; setTimeout(() => { btn.textContent = "Copy"; }, 1500); } }
+    }
+    function cmdRow(text) {
+      const d = document.createElement("div"); d.className = "cmd";
+      const code = document.createElement("code"); code.textContent = text;
+      const b = document.createElement("button"); b.className = "copybtn"; b.type = "button"; b.dataset.cmd = text; b.textContent = "Copy";
+      d.append(code, b); return d;
+    }
+    const RELEASES_URL = "https://github.com/NakliTechie/menagerie/releases";
+    const INSTALL_CMD = "go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest";
+
     function renderRelayList() {
-      const el = $("relayList"); el.innerHTML = "";
-      if (relays.length === 0) { const n = document.createElement("div"); n.className = "hint"; n.textContent = "No relays added yet."; el.appendChild(n); return; }
-      for (const r of relays) {
-        const row = document.createElement("div"); row.className = "list-row";
-        const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
-        const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
-        meta.querySelector(".n").textContent = r.name + (r.error ? ` — ${r.error}` : (r.status === "needs_token" ? " — needs token" : "")); meta.querySelector(".u").textContent = r.url;
-        row.append(dot, meta);
-        if (r.status === "needs_token") {
-          const tok = document.createElement("input"); tok.type = "password"; tok.placeholder = "registration token"; tok.autocomplete = "off";
-          tok.style.cssText = "width:150px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px";
-          const go = document.createElement("button"); go.className = "link"; go.textContent = "Connect";
-          const submit = () => { const t = tok.value.trim(); if (!t) return; r.token = t; if (r.ws && r.ws.readyState === WebSocket.OPEN) { r.status = "connecting"; send(r, { type: "register", registration_token: t }); } else connect(r); persistRelays(); renderAll(); };
-          go.addEventListener("click", submit);
-          tok.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
-          row.append(tok, go);
-        } else {
-          const rm = document.createElement("button"); rm.className = "link danger"; rm.textContent = "Remove"; rm.addEventListener("click", () => removeRelay(r.id)); row.append(rm);
-        }
-        el.appendChild(row);
+      const el = $("relayList");
+      const prevTok = $("localTokenInput") ? $("localTokenInput").value : "";
+      const hadFocus = document.activeElement && document.activeElement.id === "localTokenInput";
+      el.innerHTML = "";
+      const local = relays.find((r) => r.url === DEFAULT_LOCAL_URL);
+      const others = relays.filter((r) => r.url !== DEFAULT_LOCAL_URL);
+      if (local) el.appendChild(buildLocalSetup(local));
+      if (!local && others.length === 0) { const n = document.createElement("div"); n.className = "hint"; n.textContent = "No relays added yet."; el.appendChild(n); }
+      for (const r of others) el.appendChild(buildRelayRow(r));
+      const tokEl = $("localTokenInput");
+      if (tokEl && prevTok) tokEl.value = prevTok;
+      if (tokEl && hadFocus) { tokEl.focus(); const v = tokEl.value; tokEl.value = ""; tokEl.value = v; }
+    }
+    // The localhost relay gets a guided, self-advancing 3-step setup card.
+    function buildLocalSetup(r) {
+      const detected = !!r.hello, connected = r.status === "connected", badToken = r.status === "error";
+      const s1 = (connected || detected) ? "done" : "active";
+      const s2 = connected ? "done" : (detected ? "active" : "pending");
+      const s3 = connected ? "active" : "pending";
+      const wrap = document.createElement("div"); wrap.className = "setup";
+      const mkStep = (num, state, title, stateText, ok) => {
+        const st = document.createElement("div"); st.className = "setup-step"; st.dataset.state = state;
+        const numEl = document.createElement("div"); numEl.className = "setup-num"; numEl.textContent = state === "done" ? "✓" : String(num);
+        const body = document.createElement("div"); body.className = "setup-body";
+        const t = document.createElement("div"); t.className = "setup-title"; t.textContent = title;
+        if (stateText) { const s = document.createElement("span"); s.className = "st" + (ok ? " ok" : ""); s.textContent = stateText; t.appendChild(s); }
+        body.appendChild(t); st.append(numEl, body);
+        return { st, body };
+      };
+      // Step 1 — start a relay on this machine
+      const a = mkStep(1, s1, "Start the relay on this machine", s1 === "active" ? "not detected" : "", false);
+      if (s1 === "active") {
+        const p = document.createElement("p"); p.className = "hint"; p.style.margin = "4px 0 2px";
+        p.innerHTML = "One small server <strong>per machine</strong> (not per agent) — it runs all your agents on this box. Set up once, then leave it running.";
+        a.body.append(p, cmdRow(INSTALL_CMD), cmdRow("menagerie-relay init"), cmdRow("menagerie-relay serve"));
+        const foot = document.createElement("p"); foot.className = "hint"; foot.style.margin = "7px 0 0";
+        foot.innerHTML = `No Go? <a href="${RELEASES_URL}" target="_blank" rel="noopener">Download a binary</a>. · `;
+        const recheck = document.createElement("button"); recheck.className = "link"; recheck.textContent = "Recheck now";
+        recheck.addEventListener("click", () => { clearTimeout(r.retryTimer); r.retries = 0; connect(r); });
+        foot.appendChild(recheck); a.body.appendChild(foot);
       }
+      wrap.appendChild(a.st);
+      // Step 2 — paste the registration token
+      const b = mkStep(2, s2, "Paste its registration token", (s2 === "active" && !badToken) ? "relay detected" : "", true);
+      if (s2 === "active") {
+        if (badToken && r.error) { const e = document.createElement("p"); e.className = "inline-error"; e.style.margin = "2px 0 0"; e.textContent = r.error; b.body.appendChild(e); }
+        b.body.appendChild(cmdRow("menagerie-relay token print"));
+        const rowi = document.createElement("div"); rowi.className = "row"; rowi.style.marginTop = "7px";
+        const tok = document.createElement("input"); tok.id = "localTokenInput"; tok.type = "password"; tok.placeholder = "paste token here"; tok.autocomplete = "off"; tok.spellcheck = false;
+        tok.style.cssText = "flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px";
+        const go = document.createElement("button"); go.className = "btn primary"; go.textContent = "Connect";
+        const submit = () => { const t = tok.value.trim(); if (!t) return; r.token = t; if (r.ws && r.ws.readyState === WebSocket.OPEN) { r.status = "connecting"; send(r, { type: "register", registration_token: t }); } else connect(r); persistRelays(); renderAll(); };
+        go.addEventListener("click", submit);
+        tok.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+        rowi.append(tok, go); b.body.appendChild(rowi);
+      }
+      wrap.appendChild(b.st);
+      // Step 3 — connected
+      const agents = (r.hello && r.hello.agents) ? r.hello.agents.length : 0;
+      const host = r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : "";
+      const c = mkStep(3, s3, "Connected", connected ? `${host} · ${agents} agent${agents === 1 ? "" : "s"}` : "", true);
+      if (connected) { const rm = document.createElement("button"); rm.className = "link danger"; rm.style.marginTop = "2px"; rm.textContent = "Remove"; rm.addEventListener("click", () => removeRelay(r.id)); c.body.appendChild(rm); }
+      wrap.appendChild(c.st);
+      return wrap;
+    }
+    function buildRelayRow(r) {
+      const row = document.createElement("div"); row.className = "list-row";
+      const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
+      const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
+      meta.querySelector(".n").textContent = r.name + (r.error ? ` — ${r.error}` : (r.status === "needs_token" ? " — needs token" : "")); meta.querySelector(".u").textContent = r.url;
+      row.append(dot, meta);
+      if (r.status === "needs_token") {
+        const tok = document.createElement("input"); tok.type = "password"; tok.placeholder = "registration token"; tok.autocomplete = "off";
+        tok.style.cssText = "width:150px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px";
+        const go = document.createElement("button"); go.className = "link"; go.textContent = "Connect";
+        const submit = () => { const t = tok.value.trim(); if (!t) return; r.token = t; if (r.ws && r.ws.readyState === WebSocket.OPEN) { r.status = "connecting"; send(r, { type: "register", registration_token: t }); } else connect(r); persistRelays(); renderAll(); };
+        go.addEventListener("click", submit);
+        tok.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+        row.append(tok, go);
+      } else {
+        const rm = document.createElement("button"); rm.className = "link danger"; rm.textContent = "Remove"; rm.addEventListener("click", () => removeRelay(r.id)); row.append(rm);
+      }
+      return row;
     }
     function renderSpawnDialog() {
       const relaySel = $("spawnRelay"); const prev = relaySel.value; relaySel.innerHTML = "";
@@ -864,6 +962,7 @@
     $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("themeBtn").addEventListener("click", toggleTheme);
+    document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest(".copybtn"); if (b && b.dataset.cmd) { e.preventDefault(); copyText(b.dataset.cmd, b); } });
     $("sidebarToggle").addEventListener("click", () => { $("sidebar").classList.toggle("collapsed"); for (const s of sessions.values()) if (s.tile && !s.replay && s.status !== "exited") setTimeout(() => fitTile(s), 30); });
     $("spawnRelay").addEventListener("change", renderAgentOptions);
     $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
