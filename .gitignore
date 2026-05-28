@@ -5,3 +5,4 @@ plan/
 # Go build artifacts
 /menagerie-relay
 relay-go/menagerie-relay
+.aider*

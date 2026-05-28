@@ -67,6 +67,11 @@
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .tile.fullscreen { position: fixed; inset: 12px; height: auto; z-index: 60; box-shadow: 0 24px 64px rgba(0,0,0,.6); }
+    .tile-head[draggable="true"] { cursor: grab; }
+    .tile-head[draggable="true"]:active { cursor: grabbing; }
+    .tile.dragging { opacity: .45; }
+    .tile.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
+    .s-needs_token { background: var(--yellow); }
 
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
     .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--muted); background: linear-gradient(180deg, var(--panel), transparent); }
@@ -207,7 +212,8 @@
     // ---- Menagerie app (P4) --------------------------------------------
     // FSA-backed persistence (relays.json + session meta + PTY streams) + replay.
     // Live reconnect-resume is deferred; on reload the browser replays from FSA.
-    const PROTOCOL_VERSION = "1.0";
+    const PROTOCOL_VERSION = "1.1";
+    const DEFAULT_LOCAL_URL = "ws://127.0.0.1:7878";
     const TERM_THEME = { background: "#0d1017", foreground: "#d6d9df", cursor: "#6ea8fe", selectionBackground: "#2a3550" };
     const TERM_FONT = (getComputedStyle(document.documentElement).getPropertyValue("--mono").trim()) || "monospace";
     const TERM_SIZE = 13, TERM_LH = 1.2;
@@ -270,6 +276,7 @@
       $("wsName").textContent = label || "workspace";
       closeWorkspaceOverlay();
       await rehydrate();
+      ensureLocalhostRelay();
       renderAll();
     }
     async function initWorkspace() {
@@ -294,7 +301,7 @@
     }
     async function persistRelays() {
       if (!FS.ok() || rehydrating) return;
-      try { await FS.writeJSON([MENAGERIE_DIR, RELAYS_FILE], relays.map((r) => ({ name: r.name, url: r.url, token: r.token }))); }
+      try { await FS.writeJSON([MENAGERIE_DIR, RELAYS_FILE], relays.filter((r) => r.token).map((r) => ({ name: r.name, url: r.url, token: r.token }))); }
       catch (e) { console.warn("persist relays failed", e); }
     }
 
@@ -303,6 +310,9 @@
       const relay = { id: crypto.randomUUID(), url, token, ws: null, status: "connecting", name: name || url, hello: null, error: null };
       relays.push(relay); connect(relay); persistRelays(); renderAll(); return relay;
     }
+    // The local relay is always offered, even on a blank workspace (the common single-machine case).
+    // It connects to read `hello`, then waits for its registration token (entered in Settings).
+    function ensureLocalhostRelay() { if (!relays.some((r) => r.url === DEFAULT_LOCAL_URL)) addRelay(DEFAULT_LOCAL_URL, null, "localhost"); }
     const BACKOFF = [1000, 2000, 4000, 8000, 30000];
     function connect(relay) {
       let ws; try { ws = new WebSocket(relay.url); } catch (e) { relay.status = "error"; relay.error = "bad URL: " + e.message; renderAll(); return; }
@@ -343,23 +353,54 @@
       switch (msg.type) {
         case "hello":
           relay.hello = msg; if (!relay.name || relay.name === relay.url) relay.name = msg.relay_name || relay.url;
-          if (msg.protocol_version && msg.protocol_version !== PROTOCOL_VERSION) console.warn(`relay protocol ${msg.protocol_version} != app ${PROTOCOL_VERSION}`);
-          send(relay, { type: "register", registration_token: relay.token }); break;
+          if (msg.protocol_version && msg.protocol_version.split(".")[0] !== PROTOCOL_VERSION.split(".")[0]) console.warn(`relay protocol ${msg.protocol_version} != app ${PROTOCOL_VERSION}`);
+          if (relay.token) send(relay, { type: "register", registration_token: relay.token });
+          else { relay.status = "needs_token"; renderAll(); }
+          break;
         case "registered": relay.status = "connected"; relay.error = null; relay.retries = 0; break;
         case "spawned": {
           pendingSpawns.delete(msg.client_id); closeModal("spawnScrim");
           const sess = { id: msg.session_id, relayId: relay.id, relayName: relay.name, agent: msg.agent, token: msg.session_token,
-            status: "running", startedAt: Date.now(), cols: 0, rows: 0, term: null, pending: [], flushing: false };
+            status: "running", startedAt: Date.now(), cwd: window.__menagerie._pendingCwd || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
           sessions.set(sess.id, sess);
           if (window.Terminal) createTile(sess); else showSpawnResult("xterm.js failed to load", false);
           writeSessionMeta(sess);
+          break;
+        }
+        case "sessions": {
+          // On (re)connect the relay lists live sessions; (re-)attach each so a full
+          // refresh (fresh map → new tile) or a transient drop (revive "lost" tile) restores them.
+          for (const info of (msg.sessions || [])) {
+            const existing = sessions.get(info.session_id);
+            if (existing) {
+              if (existing.status === "lost") {
+                setSessionStatus(existing, "running");
+                if (existing.ti) existing.ti.disabled = false;
+                if (existing.sendBtn) existing.sendBtn.disabled = false;
+                send(relay, { type: "attach", session_id: info.session_id });
+              }
+              continue; // already live
+            }
+            const sess = { id: info.session_id, relayId: relay.id, relayName: relay.name, agent: info.agent, token: null,
+              status: "running", startedAt: Date.parse(info.started_at) || Date.now(), cwd: "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
+            sessions.set(sess.id, sess);
+            if (window.Terminal) createTile(sess);
+            send(relay, { type: "attach", session_id: info.session_id });
+          }
+          break;
+        }
+        case "attached": {
+          const s = sessions.get(msg.session_id); if (!s) break;
+          s.token = msg.session_token;
+          if (s.term) s.term.reset(); // the replay frame that follows rebuilds the buffer cleanly
+          setSessionStatus(s, "running"); fitTile(s);
           break;
         }
         case "output": {
           const s = sessions.get(msg.session_id); if (!s || !s.term) break;
           const bytes = bytesFromB64(msg.data);
           s.term.write(bytes);
-          if (FS.ok()) s.pending.push(bytes);
+          if (FS.ok() && msg.seq >= 0) s.pending.push(bytes); // seq -1 = replay-on-attach; don't re-persist
           if (s.status === "needs_input" || s.status === "idle") setSessionStatus(s, "running");
           break;
         }
@@ -438,7 +479,6 @@
     }
 
     function createTile(sess) {
-      sess.cwd = window.__menagerie._pendingCwd || sess.cwd || "";
       const tile = document.createElement("div"); tile.className = "tile"; tile.dataset.sid = sess.id;
       const head = document.createElement("div"); head.className = "tile-head";
       const dot = document.createElement("span"); dot.className = "dot-status s-running"; dot.setAttribute("aria-label", "running");
@@ -450,6 +490,7 @@
       head.append(dot, title, spacer, kill);
       head.addEventListener("click", (e) => { if (e.target !== kill) focusTile(sess); });
       head.addEventListener("dblclick", (e) => { if (e.target !== kill) toggleFullscreen(tile); });
+      makeDraggable(tile, head);
       const termEl = document.createElement("div"); termEl.className = "tile-term";
       const bar = document.createElement("div"); bar.className = "tile-input";
       const ti = document.createElement("input"); ti.placeholder = "type input… (Enter to send)";
@@ -463,6 +504,22 @@
       Object.assign(sess, { term, tile, termEl, dot, ti, sendBtn });
       fitTile(sess); sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
       updateEmpty(); focusTile(sess); term.focus();
+    }
+    // Drag-and-drop reordering — the header is the drag handle so the terminal body stays interactive.
+    let _dragTile = null;
+    function makeDraggable(tile, head) {
+      head.setAttribute("draggable", "true");
+      head.addEventListener("dragstart", (e) => { _dragTile = tile; tile.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", tile.dataset.sid || ""); } catch {} });
+      head.addEventListener("dragend", () => { tile.classList.remove("dragging"); document.querySelectorAll(".tile.drop-target").forEach((t) => t.classList.remove("drop-target")); _dragTile = null; });
+      tile.addEventListener("dragover", (e) => { if (!_dragTile || _dragTile === tile) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; tile.classList.add("drop-target"); });
+      tile.addEventListener("dragleave", () => tile.classList.remove("drop-target"));
+      tile.addEventListener("drop", (e) => {
+        tile.classList.remove("drop-target");
+        if (!_dragTile || _dragTile === tile) return; e.preventDefault();
+        const r = tile.getBoundingClientRect();
+        const after = e.clientX > r.left + r.width / 2;
+        $("grid").insertBefore(_dragTile, after ? tile.nextSibling : tile);
+      });
     }
     function focusTile(sess) { if (sess.tile) focusTileEl(sess.tile); }
     function tilesInOrder() { return [...document.querySelectorAll("#grid .tile")]; }
@@ -483,8 +540,8 @@
     }
     function exitFullscreen() { document.querySelectorAll(".tile.fullscreen").forEach((x) => x.classList.remove("fullscreen")); for (const s of sessions.values()) if (s.tile && !s.replay && s.status !== "exited") setTimeout(() => fitTile(s), 30); }
     function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } }
-    function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited") return; send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
-    function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
+    function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited" || !sess.token) return; send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
+    function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
     function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
     function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
 
@@ -514,6 +571,7 @@
       const close = document.createElement("button"); close.className = "btn icon ghost"; close.title = "Close"; close.setAttribute("aria-label", "Close replay"); close.textContent = "✕";
       close.addEventListener("click", () => { r.playing = false; clearInterval(r.tick); tile.remove(); sessions.delete(r.id); updateEmpty(); });
       head.append(dot, title, spacer, close);
+      makeDraggable(tile, head);
       const termEl = document.createElement("div"); termEl.className = "tile-term";
       const ctrls = document.createElement("div"); ctrls.className = "replay-controls";
       const playBtn = document.createElement("button"); playBtn.className = "btn icon ghost"; playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play or pause replay");
@@ -550,7 +608,7 @@
         const chip = document.createElement("div"); chip.className = "relay-chip";
         const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
         const name = document.createElement("span"); name.className = "name"; name.textContent = r.name;
-        const host = document.createElement("span"); host.className = "host"; host.textContent = r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status;
+        const host = document.createElement("span"); host.className = "host"; host.textContent = r.status === "needs_token" ? "needs token" : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
         chip.append(dot, name, host); el.appendChild(chip);
       }
     }
@@ -573,9 +631,20 @@
         const row = document.createElement("div"); row.className = "list-row";
         const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
         const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
-        meta.querySelector(".n").textContent = r.name + (r.error ? ` — ${r.error}` : ""); meta.querySelector(".u").textContent = r.url;
-        const rm = document.createElement("button"); rm.className = "link danger"; rm.textContent = "Remove"; rm.addEventListener("click", () => removeRelay(r.id));
-        row.append(dot, meta, rm); el.appendChild(row);
+        meta.querySelector(".n").textContent = r.name + (r.error ? ` — ${r.error}` : (r.status === "needs_token" ? " — needs token" : "")); meta.querySelector(".u").textContent = r.url;
+        row.append(dot, meta);
+        if (r.status === "needs_token") {
+          const tok = document.createElement("input"); tok.type = "password"; tok.placeholder = "registration token"; tok.autocomplete = "off";
+          tok.style.cssText = "width:150px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px";
+          const go = document.createElement("button"); go.className = "link"; go.textContent = "Connect";
+          const submit = () => { const t = tok.value.trim(); if (!t) return; r.token = t; if (r.ws && r.ws.readyState === WebSocket.OPEN) { r.status = "connecting"; send(r, { type: "register", registration_token: t }); } else connect(r); persistRelays(); renderAll(); };
+          go.addEventListener("click", submit);
+          tok.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+          row.append(tok, go);
+        } else {
+          const rm = document.createElement("button"); rm.className = "link danger"; rm.textContent = "Remove"; rm.addEventListener("click", () => removeRelay(r.id)); row.append(rm);
+        }
+        el.appendChild(row);
       }
     }
     function renderSpawnDialog() {
@@ -592,7 +661,9 @@
       for (const a of agents) { const o = document.createElement("option"); o.value = a; o.textContent = a; agentSel.appendChild(o); }
       $("customCmdField").style.display = agentSel.value === "custom" ? "" : "none";
     }
-    function renderAll() { renderRelayStrip(); renderRelayList(); updateEmpty(); if ($("spawnScrim").classList.contains("open")) renderSpawnDialog(); }
+    // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
+    // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
+    function renderAll() { renderRelayStrip(); renderRelayList(); updateEmpty(); }
 
     // ===== workspace overlay + modals =================================
     function openWorkspaceOverlay(mode, handle) {
@@ -627,7 +698,7 @@
       if (ov._mode === "reconnect" && ov._handle) { if (await ensurePermission(ov._handle, true)) { await setWorkspace(ov._handle, ov._handle.name); } else wsError("Permission denied."); }
       else await pickWorkspace();
     });
-    $("wsSkipBtn").addEventListener("click", () => { FS.handle = null; FS.label = "in-memory"; $("workspace").textContent = "in-memory (not saved)"; $("wsName").textContent = "in-memory (not saved)"; closeWorkspaceOverlay(); renderAll(); });
+    $("wsSkipBtn").addEventListener("click", () => { FS.handle = null; FS.label = "in-memory"; $("workspace").textContent = "in-memory (not saved)"; $("wsName").textContent = "in-memory (not saved)"; closeWorkspaceOverlay(); ensureLocalhostRelay(); renderAll(); });
     document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeAllModals(); }));
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeAllModals();

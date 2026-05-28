@@ -13,7 +13,7 @@
  * per browser↔relay pair; multiple sessions multiplex over it via `session_id`.
  */
 
-export const PROTOCOL_VERSION = "1.0" as const;
+export const PROTOCOL_VERSION = "1.1" as const;
 
 // ---- Shared scalar types --------------------------------------------------
 
@@ -124,6 +124,30 @@ export interface ResumeFailedMessage extends BaseMessage {
   session_id: string;
 }
 
+/** One live session in a `sessions` list (protocol 1.1). */
+export interface SessionInfo {
+  session_id: string;
+  agent: string;
+  started_at: string; // ISO-8601 UTC
+  pid: number;
+}
+
+/** Live session list, sent right after `registered`, so a reconnecting client can re-attach (protocol 1.1). */
+export interface SessionsMessage extends BaseMessage {
+  type: "sessions";
+  sessions: SessionInfo[];
+}
+
+/** Confirms a re-attach and issues a fresh session token; the relay then replays buffered output (protocol 1.1). */
+export interface AttachedMessage extends BaseMessage {
+  type: "attached";
+  session_id: string;
+  session_token: string;
+  agent: string;
+  started_at: string;
+  pid: number;
+}
+
 // ===========================================================================
 // Browser → Relay
 // ===========================================================================
@@ -174,6 +198,14 @@ export interface ResumeMessage extends BaseMessage {
   last_seq: number;
 }
 
+/** Re-attach a registered client to an existing live session (protocol 1.1). The
+ *  registration token (already presented via `register`) is the authority; the
+ *  relay issues a fresh session_token in the `attached` reply. */
+export interface AttachMessage extends BaseMessage {
+  type: "attach";
+  session_id: string;
+}
+
 // ===========================================================================
 // Either direction
 // ===========================================================================
@@ -190,7 +222,9 @@ export interface ErrorMessage extends BaseMessage {
 export type RelayToBrowserMessage =
   | HelloMessage
   | RegisteredMessage
+  | SessionsMessage
   | SpawnedMessage
+  | AttachedMessage
   | OutputMessage
   | EventMessage
   | ResumeFailedMessage
@@ -199,6 +233,7 @@ export type RelayToBrowserMessage =
 export type BrowserToRelayMessage =
   | RegisterMessage
   | SpawnMessage
+  | AttachMessage
   | InputMessage
   | SignalMessage
   | ResumeMessage

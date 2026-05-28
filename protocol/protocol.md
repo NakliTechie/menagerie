@@ -1,6 +1,6 @@
 # Menagerie relay protocol
 
-> **protocol-v1.0** · **Lifecycle:** locked (2026-05-28).
+> **protocol-v1.1** · **Lifecycle:** locked (2026-05-28). v1.1 adds live re-attach (`sessions` / `attach` / `attached`); all v1.0 messages are unchanged.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 
@@ -63,6 +63,9 @@ Two token kinds, no JWT/PKI/expiry-claims. Tokens are opaque random strings (32 
 | `event` | relay → browser | Async lifecycle: `exited` / `idle` / `needs_input` / `child_spawned` |
 | `resume` | browser → relay | Replay frames after `last_seq` |
 | `resume_failed` | relay → browser | Session gone; fall back to FSA replay |
+| `sessions` | relay → browser | Live session list, sent after `registered` (1.1) |
+| `attach` | browser → relay | Re-attach a registered client to a live session (1.1) |
+| `attached` | relay → browser | Re-attach ack + fresh `session_token` (1.1) |
 | `error` | either | Typed error with `code` + human-readable `message` |
 
 ## 5. Messages
@@ -156,6 +159,26 @@ Relay replays every `output` after `last_seq`, or replies `resume_failed`.
 { "type": "resume_failed", "session_id": "…" }
 ```
 
+### Live re-attach (protocol 1.1)
+
+A client reconnect (e.g. a browser refresh) drops the WebSocket, but the relay's sessions keep running. The relay advertises them and the client re-attaches. No session tokens are persisted across the reconnect — the **registration token** (already presented via `register`) is the authority, and the relay mints a fresh `session_token` on attach.
+
+**`sessions`** (relay → browser) — sent immediately after `registered`:
+```json
+{ "type": "sessions", "sessions": [ { "session_id": "…", "agent": "mini", "started_at": "2026-05-28T10:30:00Z", "pid": 12345 } ] }
+```
+
+**`attach`** (browser → relay) — for each live session the client wants to resume:
+```json
+{ "type": "attach", "session_id": "…" }
+```
+
+**`attached`** (relay → browser) — re-issues a fresh `session_token`; the relay then replays the session's buffered output (as an `output` frame) and resumes live streaming:
+```json
+{ "type": "attached", "session_id": "…", "session_token": "…", "agent": "mini", "started_at": "2026-05-28T10:30:00Z", "pid": 12345 }
+```
+If the session is gone (relay restarted), the relay replies `resume_failed` and the client falls back to FSA replay.
+
 ### `error` (either direction)
 ```json
 { "type": "error", "session_id": "…", "code": "invalid_token", "message": "…" }
@@ -181,7 +204,7 @@ The set is **open-ended** — clients MUST tolerate unknown codes and surface `m
 
 ## 8. Versioning & compatibility
 
-- Protocol versions are semantic: `protocol-v<major>.<minor>`. This is `1.0`.
+- Protocol versions are semantic: `protocol-v<major>.<minor>`. This is `1.1` — v1.1 added `sessions` / `attach` / `attached` (additive; same major, so v1.0 clients still interoperate for spawn/stream/kill).
 - The browser reads `hello.protocol_version`. On mismatch it shows a user-visible warning and attempts the connection anyway (best-effort).
 - Adding a new optional field or a new `error` code is a **minor** bump. Removing/renaming a field or message type, or changing a field's meaning, is a **major** bump.
 

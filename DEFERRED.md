@@ -50,10 +50,6 @@
 
 ## Architecture-level, with triggers
 
-**Live reconnect-`resume` (relay-side replay of frames after `last_seq`)**
-- *Why:* deferred during P4. It needs a pub/sub refactor so a session's output broadcasts to whatever connection is currently attached (and backfills missed frames on reattach), rather than the P3 model where output is wired to the spawning connection. P4 instead persists trajectories to FSA, and on reload the browser falls back to FSA replay (relay returns `resume_failed`), which covers the "reload → review past session" path without the refactor.
-- *Trigger:* users want to reattach to a *still-running* agent after a tab reload/disconnect and resume the live stream (not just replay the recording). Targets a later v1.0 phase.
-
 **Binary WebSocket frames**
 - *Why:* v1.0 uses base64 PTY bytes inside JSON text frames (§4) — simpler, debuggable.
 - *Trigger:* throughput suffers from base64 overhead. (Expensive to reverse — escalate per §14.)
