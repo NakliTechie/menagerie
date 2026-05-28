@@ -1,5 +1,10 @@
-# Menagerie is a monorepo but only the single-file app is public.
-# Default-deny everything, then re-include just index.html, so a Cloudflare
-# deploy never exposes relay-go/, protocol/, docs/, etc.
+# Menagerie is a monorepo but only the app + the public walkthrough are shipped.
+# Default-deny everything, then re-include index.html and the walkthrough subtree,
+# so a Cloudflare deploy never exposes relay-go/, protocol/, plan/, etc.
 /*
 !/index.html
+# Re-include only docs/walkthrough/** (the user-facing guide + its screenshots).
+!/docs
+/docs/*
+!/docs/walkthrough
+!/docs/walkthrough/**

@@ -3,11 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="light dark" />
   <!-- Security posture, handoff §8. xterm.js from cdnjs with SRI; its CSS is inlined so style-src stays 'self'. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
   <title>Menagerie</title>
+  <!-- Apply the saved theme before first paint so dark users don't flash light. -->
+  <script>try{if(localStorage.getItem('menagerie-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <!-- xterm.js 5.5.0 (cdnjs, unminified — cdnjs has no min.js for this version). UMD global: Terminal. -->
   <script defer
           src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.5.0/xterm.js"
@@ -20,13 +22,27 @@
     .xterm{padding:6px 8px}
 
     :root {
-      --bg: #0f1115; --panel: #161922; --panel-2: #1d212b; --elev: #232834;
-      --border: #2a2f3a; --text: #e6e8ec; --muted: #9aa3b2; --faint: #6e7681;
-      --accent: #6ea8fe; --accent-press: #5a93e6;
-      --green: #3fb950; --yellow: #d29922; --red: #f85149; --grey: #6e7681;
+      /* Light theme — Rangrez "MUJI" (Japan · the cleanest white in the library). Default. */
+      color-scheme: light;
+      --bg: #f9f9f8; --panel: #ffffff; --panel-2: #f1f1ee; --elev: #ebebe6;
+      --border: #e2e1db; --text: #1c1815; --muted: #6b6962; --faint: #9b988f;
+      --accent: #8b3a1f; --accent-press: #71301a; --on-accent: #ffffff;
+      --green: #4a6b2a; --yellow: #b06f12; --red: #c0392b; --orange: #cf6a1e; --grey: #b1aea4;
+      --btn-hover: #e3e2db;
+      --term-bg: #ffffff; --term-fg: #1c1815; --term-cursor: #8b3a1f; --term-sel: #d9e2f0;
       --radius: 10px; --radius-sm: 7px;
       --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
       --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    /* Dark theme — Rangrez "Kutch Bhunga" (deep indigo + cream; a navy dark, not near-black). */
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #1a2848; --panel: #2a3858; --panel-2: #223150; --elev: #34456a;
+      --border: #3a4a6e; --text: #f4ecd8; --muted: #b4bacb; --faint: #8a90a8;
+      --accent: #e0573a; --accent-press: #c8341a; --on-accent: #ffffff;
+      --green: #34a85a; --yellow: #f0c820; --red: #f0594c; --orange: #e08a3a; --grey: #6b7488;
+      --btn-hover: #3c4f78;
+      --term-bg: #14203a; --term-fg: #f4ecd8; --term-cursor: #e0573a; --term-sel: #34456a;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -40,9 +56,9 @@
     .workspace { color: var(--muted); font-size: 13px; }
     .spacer { flex: 1; }
     .btn { display: inline-flex; align-items: center; gap: 7px; background: var(--elev); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 12px; transition: background .12s, border-color .12s; }
-    .btn:hover { background: #2a303d; }
+    .btn:hover { background: var(--btn-hover); }
     .btn:active { transform: translateY(1px); }
-    .btn.primary { background: var(--accent); border-color: var(--accent); color: #0b0d12; font-weight: 600; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
     .btn.primary:hover { background: var(--accent-press); }
     .btn.ghost { background: transparent; }
     .btn.icon { padding: 7px 9px; }
@@ -59,7 +75,7 @@
     .sb-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sb-row .mt { color: var(--faint); font-size: 11px; flex: 0 0 auto; }
     .sb-empty { color: var(--faint); font-size: 12px; padding: 4px 8px; }
-    .main { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px; }
+    .main { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px 18px 56px; }
 
     .dot-status { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--grey); }
     .s-connected, .s-running { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.15); }
@@ -78,7 +94,7 @@
     .tile.dragging { opacity: .45; }
     .tile.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
     .s-needs_token { background: var(--yellow); }
-    .s-rate_limited { background: #db8a3a; box-shadow: 0 0 0 3px rgba(219,138,58,.18); animation: pulse 1.8s ease-in-out infinite; }
+    .s-rate_limited { background: var(--orange); box-shadow: 0 0 0 3px rgba(219,138,58,.18); animation: pulse 1.8s ease-in-out infinite; }
 
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
     .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--muted); background: linear-gradient(180deg, var(--panel), transparent); }
@@ -90,7 +106,7 @@
     .tile-head { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
     .tile-title { font-size: 12.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tile-title .sub { color: var(--faint); font-weight: 400; }
-    .tile-term { flex: 1; min-height: 0; background: #0d1017; overflow: hidden; }
+    .tile-term { flex: 1; min-height: 0; background: var(--term-bg); overflow: hidden; }
     .tile-input { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
     .tile-input input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 9px; outline: none; font-family: var(--mono); font-size: 12.5px; }
     .tile-input input:focus { border-color: var(--accent); }
@@ -127,7 +143,7 @@
     .link.danger { color: var(--red); }
 
     /* first-launch / reconnect workspace overlay */
-    .ws-overlay { position: fixed; inset: 0; background: radial-gradient(1200px 600px at 50% -10%, #1a1f2b, var(--bg)); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .ws-overlay { position: fixed; inset: 0; background: radial-gradient(1200px 600px at 50% -10%, var(--panel-2), var(--bg)); display: none; align-items: center; justify-content: center; z-index: 100; }
     .ws-overlay.open { display: flex; }
     .ws-card { text-align: center; max-width: 460px; padding: 40px 32px; }
     .ws-card .mk { font-weight: 650; font-size: 20px; margin-bottom: 14px; }
@@ -135,6 +151,21 @@
     .ws-card h1 { font-size: 18px; margin: 0 0 8px; }
     .ws-card p { color: var(--muted); margin: 0 0 22px; }
     .ws-card .err { color: var(--red); font-size: 12.5px; margin-top: 14px; min-height: 1em; }
+    .ws-logo { position: absolute; top: 18px; left: 22px; font-weight: 650; font-size: 16px; letter-spacing: .2px; }
+    .ws-logo .dot { color: var(--accent); }
+
+    /* Help / About modal */
+    .help-lede { margin: 0; font-size: 14px; }
+    .help-steps { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; color: var(--muted); }
+    .help-steps strong { color: var(--text); }
+    .help-steps code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: var(--text); }
+    .help-links { display: flex; gap: 8px; flex-wrap: wrap; }
+    .help-links .btn { text-decoration: none; }
+
+    /* Footer pills (naklios house pattern) */
+    .footer-nav { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: center; background: var(--panel); border: 1px solid var(--border); padding: 6px 16px; border-radius: 999px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.12); z-index: 40; white-space: nowrap; }
+    .footer-nav a { color: var(--accent); text-decoration: none; }
+    .footer-nav a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -144,6 +175,8 @@
     <span class="workspace" id="workspace">no workspace</span>
     <span class="spacer"></span>
     <button class="btn primary" id="spawnBtn">+ Spawn</button>
+    <button class="btn icon ghost" id="helpBtn" title="About Menagerie" aria-label="About Menagerie">?</button>
+    <button class="btn icon ghost" id="themeBtn" title="Toggle light / dark" aria-label="Toggle light or dark theme">☾</button>
     <button class="btn icon ghost" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
   </div>
 
@@ -160,6 +193,31 @@
       <div class="empty" id="emptyState"></div>
       <div class="grid" id="grid"></div>
     </main>
+  </div>
+
+  <!-- Help / About (z-index above the workspace overlay so it shows first on a new visit) -->
+  <div class="scrim" id="helpScrim" data-close style="z-index:110">
+    <div class="modal" role="dialog" aria-label="About Menagerie">
+      <header><h2 style="margin:0">Menagerie<span style="color:var(--accent)">.</span></h2><span class="spacer"></span><button class="btn icon ghost" data-close aria-label="Close">✕</button></header>
+      <div class="body">
+        <p class="help-lede">A browser-native console for running and watching <strong>fleets of coding agents</strong> — Claude Code, Codex, opencode, Aider and friends — side by side in one window.</p>
+        <div class="note"><strong>How it works.</strong> This page <em>is</em> the whole app. It talks over WebSocket to small <em>relays</em> you run next to your agents (your laptop, a server, wherever). Each relay streams its agents' terminals here. No NakliTechie server, no account, no telemetry — nothing leaves your machines.</div>
+        <div>
+          <div class="section-title">Get going</div>
+          <ol class="help-steps">
+            <li>Install &amp; start a relay next to your agents: <code>menagerie-relay init</code>, then <code>menagerie-relay serve</code>.</li>
+            <li>Pick a <strong>workspace folder</strong> — it stores your relays + session history, locally.</li>
+            <li>In <strong>Settings</strong> (the gear), add the relay's URL and registration token.</li>
+            <li>Hit <strong>+ Spawn</strong>, pick an agent, and go. The <strong>◐</strong> button switches light / dark.</li>
+          </ol>
+        </div>
+        <div class="help-links">
+          <a class="btn" href="docs/walkthrough/index.html" target="_blank" rel="noopener">Walkthrough</a>
+          <a class="btn" href="https://github.com/NakliTechie/menagerie" target="_blank" rel="noopener">Source</a>
+          <a class="btn" href="https://menagerie.naklitechie.com" target="_blank" rel="noopener">Live site</a>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Settings -->
@@ -215,8 +273,8 @@
 
   <!-- First-launch / reconnect workspace overlay -->
   <div class="ws-overlay" id="wsOverlay">
+    <div class="ws-logo">Menagerie<span class="dot">.</span></div>
     <div class="ws-card">
-      <div class="mk">Menagerie<span class="dot">.</span></div>
       <h1 id="wsTitle">Pick a folder to store your Menagerie state</h1>
       <p id="wsBody">Relays, session metadata, and trajectories live in a folder you choose and own. Nothing leaves your machine.</p>
       <button class="btn primary lg" id="wsPickBtn">Choose folder…</button>
@@ -225,13 +283,25 @@
     </div>
   </div>
 
+  <!-- Footer pills (naklios house pattern) -->
+  <nav class="footer-nav" aria-label="Project links">
+    <a href="https://naklitechie.github.io/" target="_blank" rel="noopener">More projects</a>
+    <a href="https://github.com/NakliTechie/menagerie" target="_blank" rel="noopener">Source</a>
+  </nav>
+
   <script type="module">
     // ---- Menagerie app (P4) --------------------------------------------
     // FSA-backed persistence (relays.json + session meta + PTY streams) + replay.
     // Live reconnect-resume is deferred; on reload the browser replays from FSA.
     const PROTOCOL_VERSION = "1.1";
     const DEFAULT_LOCAL_URL = "ws://127.0.0.1:7878";
-    const TERM_THEME = { background: "#0d1017", foreground: "#d6d9df", cursor: "#6ea8fe", selectionBackground: "#2a3550" };
+    // Terminal colors follow the active app theme (read from the CSS vars set per theme).
+    function termTheme() {
+      const cs = getComputedStyle(document.documentElement);
+      const v = (n, fb) => (cs.getPropertyValue(n).trim() || fb);
+      return { background: v("--term-bg", "#ffffff"), foreground: v("--term-fg", "#1c1815"),
+               cursor: v("--term-cursor", "#8b3a1f"), selectionBackground: v("--term-sel", "#d9e2f0") };
+    }
     const TERM_FONT = (getComputedStyle(document.documentElement).getPropertyValue("--mono").trim()) || "monospace";
     const TERM_SIZE = 13, TERM_LH = 1.2;
     const MENAGERIE_DIR = ".menagerie", SESSIONS_DIR = "sessions", RELAYS_FILE = "relays.json";
@@ -541,7 +611,7 @@
       sendBtn.addEventListener("click", () => { sendInput(sess, ti.value + "\n"); ti.value = ""; ti.focus(); });
       bar.append(ti, sendBtn);
       tile.append(head, termEl, bar); $("grid").appendChild(tile);
-      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: true, scrollback: 2000, theme: TERM_THEME, screenReaderMode: true });
+      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: true, scrollback: 2000, theme: termTheme(), screenReaderMode: true });
       term.open(termEl); term.onData((d) => sendInput(sess, d));
       Object.assign(sess, { term, tile, termEl, dot, ti, sendBtn });
       fitTile(sess); sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
@@ -643,7 +713,7 @@
       const posLbl = document.createElement("span"); posLbl.textContent = "0%";
       ctrls.append(playBtn, scrub, speedSel, posLbl);
       tile.append(head, termEl, ctrls); $("grid").appendChild(tile);
-      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: false, scrollback: 4000, theme: TERM_THEME, screenReaderMode: true });
+      const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: false, scrollback: 4000, theme: termTheme(), screenReaderMode: true });
       term.open(termEl); Object.assign(r, { term, tile, termEl });
       fitTile(r);
       const renderTo = (pos) => { r.pos = Math.max(0, Math.min(pos, r.bytes.length)); term.reset(); term.write(r.bytes.slice(0, r.pos)); scrub.value = String(r.pos); posLbl.textContent = Math.round((r.pos / Math.max(1, r.bytes.length)) * 100) + "%"; };
@@ -768,9 +838,32 @@
     function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")) || $("wsOverlay").classList.contains("open"); }
     function showSpawnResult(text, ok) { const el = $("spawnResult"); el.textContent = text; el.className = ok ? "inline-ok" : "inline-error"; }
 
+    // ===== theme (light default / dark — rangrez palettes) ============
+    const THEME_KEY = "menagerie-theme";
+    function currentTheme() { return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light"; }
+    function applyTheme(mode) {
+      if (mode === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      else document.documentElement.removeAttribute("data-theme");
+      const btn = $("themeBtn"); if (btn) { btn.textContent = mode === "dark" ? "☼" : "☾"; btn.title = mode === "dark" ? "Switch to light" : "Switch to dark"; }
+      const t = termTheme();
+      for (const s of sessions.values()) if (s.term) { try { s.term.options.theme = t; } catch {} }
+    }
+    function toggleTheme() { const next = currentTheme() === "dark" ? "light" : "dark"; try { localStorage.setItem(THEME_KEY, next); } catch {} applyTheme(next); }
+    function initTheme() { let m = "light"; try { m = localStorage.getItem(THEME_KEY) || "light"; } catch {} applyTheme(m); }
+
+    // ===== help / about ===============================================
+    const HELP_SEEN_KEY = "menagerie-help-seen";
+    // First visit: show the help modal (above the workspace overlay) so a new user knows what this is.
+    function maybeFirstVisitHelp() {
+      let seen = false; try { seen = !!localStorage.getItem(HELP_SEEN_KEY); } catch {}
+      if (!seen) { openModal("helpScrim"); try { localStorage.setItem(HELP_SEEN_KEY, "1"); } catch {} }
+    }
+
     // ===== wiring =====================================================
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
     $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
+    $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
+    $("themeBtn").addEventListener("click", toggleTheme);
     $("sidebarToggle").addEventListener("click", () => { $("sidebar").classList.toggle("collapsed"); for (const s of sessions.values()) if (s.tile && !s.replay && s.status !== "exited") setTimeout(() => fitTile(s), 30); });
     $("spawnRelay").addEventListener("change", renderAgentOptions);
     $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
@@ -811,8 +904,10 @@
       test: { async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
               async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); } } };
 
+    initTheme();
     renderAll();
     initWorkspace();
+    maybeFirstVisitHelp();
   </script>
 </body>
 </html>

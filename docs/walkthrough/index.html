@@ -26,6 +26,12 @@
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
     code { font-family: var(--mono); font-size: .88em; background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; color: var(--text); }
+    pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; overflow-x: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.55; color: var(--text); margin: 0 0 16px; }
+    pre .c { color: var(--faint); }
+    .tip { display: flex; align-items: flex-start; gap: 11px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 14px; font-size: 14.5px; color: var(--muted); margin: 0 0 16px; }
+    .tip .bang { flex: 0 0 auto; color: var(--yellow); font-weight: 700; font-family: var(--mono); }
+    .tip b, .tip em { color: var(--text); font-style: normal; }
+    .tip code { font-size: .85em; }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     /* Top bar mirrors the app's chrome. */
@@ -149,10 +155,41 @@
       </p>
       <p>
         No NakliTechie server. No accounts. No telemetry. <strong>You own every piece</strong> —
-        agents, relays, sessions, trajectories. This tour walks the v1.0 golden path: pick a workspace,
-        register a relay, spawn an agent, watch it run, fill a tab with a fleet, and replay a finished session.
+        agents, relays, sessions, trajectories. This tour walks the v1.0 golden path: <strong>set up and start a relay</strong>,
+        open the app and pick a workspace, register the relay, spawn an agent, watch it run, fill a tab with a fleet,
+        and replay a finished session.
       </p>
     </header>
+
+    <!-- STEP 0 — prerequisite -->
+    <p class="section-eyebrow">Before you start · Set up a relay</p>
+    <section class="step">
+      <h2 class="step"><span class="step-num">00</span>Get a relay running</h2>
+      <p>
+        This page can't reach your agents until a <strong>relay</strong> is running next to them. A relay is one
+        small Go binary you install and own. Do this once per machine where agents run — your laptop, a dev box, a server.
+      </p>
+      <p><strong>1 · Install it.</strong> Build from source (needs <a href="https://go.dev/dl/" target="_blank" rel="noopener">Go 1.21+</a>), or grab a prebuilt binary from <a href="https://github.com/NakliTechie/menagerie/releases" target="_blank" rel="noopener">Releases</a> when one is published.</p>
+      <pre><span class="c"># build from source</span>
+git clone https://github.com/NakliTechie/menagerie
+cd menagerie/relay-go
+go build -o menagerie-relay ./cmd/menagerie-relay</pre>
+      <p><strong>2 · Initialise it.</strong> Writes <code>~/.menagerie/relay.toml</code> with a generated registration token and a sensible default config.</p>
+      <pre>./menagerie-relay init</pre>
+      <p><strong>3 · Copy the registration token.</strong> The app needs it to authenticate against this relay. Print it any time:</p>
+      <pre>./menagerie-relay token print</pre>
+      <p><strong>4 · Allow your app's origin.</strong> The relay only accepts WebSocket connections from origins you list — that origin check is the security boundary. The hosted app (<code>https://menagerie.naklitechie.com</code>) is allowed out of the box; if you open Menagerie from somewhere else, add that origin to <code>allowed_origins</code> in the config:</p>
+      <pre><span class="c"># ~/.menagerie/relay.toml</span>
+allowed_origins = [
+  "https://menagerie.naklitechie.com",
+  "http://localhost:8000",
+]</pre>
+      <p class="tip"><span class="bang">!</span><span>Origins are matched exactly, and <code>"null"</code> is deliberately <em>not</em> allowed by default — a sandboxed iframe also sends <code>Origin: null</code>, so allowing it would let any web page through. Add it by hand only for <code>file://</code> use.</span></p>
+      <p><strong>5 · (Optional) Wire up agents.</strong> The <code>[agents]</code> table maps an agent id to the command that launches it — e.g. <code>claude-code → claude</code>, <code>mini → mini</code>. The built-in <code>custom</code> agent runs whatever command you hand it, so you can drive any TUI agent without writing a shim.</p>
+      <p><strong>6 · Start serving.</strong> Listens on <code>127.0.0.1:7878</code> by default. For a relay on another machine, front it with TLS (<code>wss://</code>) at a reachable address.</p>
+      <pre>./menagerie-relay serve</pre>
+      <p>That's the whole setup — the relay keeps running and its sessions outlive page reloads. Now open the app and connect to it.</p>
+    </section>
 
     <!-- STEP 1 -->
     <p class="section-eyebrow">Step 1 · First launch</p>
