@@ -82,7 +82,7 @@
     .s-connecting, .s-idle { background: var(--yellow); }
     .s-connecting { animation: pulse 1.1s ease-in-out infinite; }
     .s-error { background: var(--red); }
-    .s-closed, .s-exited { background: var(--grey); box-shadow: none; }
+    .s-exited { background: var(--grey); box-shadow: none; }
     .s-needs_input { background: var(--red); box-shadow: 0 0 0 3px rgba(248,81,73,.18); animation: pulse 1.1s ease-in-out infinite; }
     .s-replay { background: var(--accent); }
     .s-lost { background: var(--red); box-shadow: none; }
@@ -146,8 +146,6 @@
     .ws-overlay { position: fixed; inset: 0; background: radial-gradient(1200px 600px at 50% -10%, var(--panel-2), var(--bg)); display: none; align-items: center; justify-content: center; z-index: 100; }
     .ws-overlay.open { display: flex; }
     .ws-card { text-align: center; max-width: 460px; padding: 40px 32px; }
-    .ws-card .mk { font-weight: 650; font-size: 20px; margin-bottom: 14px; }
-    .ws-card .mk .dot { color: var(--accent); }
     .ws-card h1 { font-size: 18px; margin: 0 0 8px; }
     .ws-card p { color: var(--muted); margin: 0 0 22px; }
     .ws-card .err { color: var(--red); font-size: 12.5px; margin-top: 14px; min-height: 1em; }
@@ -158,9 +156,6 @@
     .help-lede { margin: 0; font-size: 14px; }
     .help-step-lede { margin: 11px 0 0; font-size: 13.5px; color: var(--muted); }
     .help-step-lede strong { color: var(--text); font-weight: 600; }
-    .help-steps { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; color: var(--muted); }
-    .help-steps strong { color: var(--text); }
-    .help-steps code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: var(--text); }
     .help-links { display: flex; gap: 8px; flex-wrap: wrap; }
     .help-links .btn { text-decoration: none; }
 
@@ -331,7 +326,7 @@
 
     const relays = [];
     const sessions = new Map();
-    const pendingSpawns = new Set();
+    const pendingCwd = new Map(); // client_id → cwd, to label the session in its `spawned` reply
     let rehydrating = false;
     const $ = (id) => document.getElementById(id);
 
@@ -425,12 +420,16 @@
     function ensureLocalhostRelay() { if (!relays.some((r) => r.url === DEFAULT_LOCAL_URL)) addRelay(DEFAULT_LOCAL_URL, null, "localhost"); }
     const BACKOFF = [1000, 2000, 4000, 8000, 30000];
     function connect(relay) {
+      // Each attempt gets a generation; listeners from a superseded socket bail out,
+      // so a stale `close` can't flip a freshly-connected relay or stack reconnects.
+      const gen = relay.gen = (relay.gen || 0) + 1;
+      if (relay.ws) { try { relay.ws.close(); } catch {} }
       let ws; try { ws = new WebSocket(relay.url); } catch (e) { relay.status = "error"; relay.error = "bad URL: " + e.message; renderAll(); return; }
       relay.ws = ws; relay.status = "connecting"; relay.error = null;
-      ws.addEventListener("open", () => { relay.retries = 0; });
-      ws.addEventListener("message", (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } handleMessage(relay, m); });
+      ws.addEventListener("open", () => { if (relay.gen !== gen) return; relay.retries = 0; });
+      ws.addEventListener("message", (ev) => { if (relay.gen !== gen) return; let m; try { m = JSON.parse(ev.data); } catch { return; } handleMessage(relay, m); });
       ws.addEventListener("close", () => {
-        if (relay.removed) return;
+        if (relay.gen !== gen || relay.removed) return; // superseded by a newer socket, or relay removed
         if (relay.status === "error") { renderAll(); return; } // auth failure: don't auto-retry
         relay.status = "connecting"; markRelaySessionsLost(relay); scheduleReconnect(relay); renderAll();
       });
@@ -456,6 +455,8 @@
       const i = relays.findIndex((r) => r.id === id); if (i < 0) return;
       relays[i].removed = true; clearTimeout(relays[i].retryTimer);
       try { relays[i].ws && relays[i].ws.close(); } catch {}
+      // Tear down this relay's tiles — they can't reconnect once the relay is gone.
+      for (const s of [...sessions.values()]) if (s.relayId === id && !s.replay) destroyTile(s);
       relays.splice(i, 1); persistRelays(); renderAll();
     }
 
@@ -469,9 +470,10 @@
           break;
         case "registered": relay.status = "connected"; relay.error = null; relay.retries = 0; break;
         case "spawned": {
-          pendingSpawns.delete(msg.client_id); closeModal("spawnScrim");
+          closeModal("spawnScrim");
           const sess = { id: msg.session_id, relayId: relay.id, relayName: relay.name, agent: msg.agent, token: msg.session_token,
-            status: "running", startedAt: Date.now(), cwd: window.__menagerie._pendingCwd || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
+            status: "running", startedAt: Date.now(), cwd: pendingCwd.get(msg.client_id) || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
+          pendingCwd.delete(msg.client_id);
           sessions.set(sess.id, sess);
           if (window.Terminal) createTile(sess); else showSpawnResult("xterm.js failed to load", false);
           writeSessionMeta(sess);
@@ -508,7 +510,7 @@
         }
         case "output": {
           const s = sessions.get(msg.session_id); if (!s || !s.term) break;
-          const bytes = bytesFromB64(msg.data);
+          const bytes = bytesFromB64(msg.data); if (!bytes) break;
           s.term.write(bytes);
           if (FS.ok() && msg.seq >= 0) s.pending.push(bytes); // seq -1 = replay-on-attach; don't re-persist
           if (s.status === "needs_input" || s.status === "idle" || s.status === "rate_limited") setSessionStatus(s, "running");
@@ -517,7 +519,7 @@
         case "event": {
           const s = sessions.get(msg.session_id); if (!s) break;
           if (msg.event === "exited") {
-            setSessionStatus(s, "exited"); s.tile && s.tile.classList.add("exited");
+            setSessionStatus(s, "exited");
             if (s.ti) s.ti.disabled = true; if (s.sendBtn) s.sendBtn.disabled = true;
             if (s.timer) clearInterval(s.timer);
             if (s.term) s.term.write(`\r\n\x1b[90m— exited (code ${msg.exit_code}) —\x1b[0m\r\n`);
@@ -526,7 +528,7 @@
           } else if (msg.event === "needs_input") { if (s.status !== "needs_input") beep(); setSessionStatus(s, "needs_input"); }
           else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
           else if (msg.event === "idle") setSessionStatus(s, "idle");
-          updateAttention(); break;
+          break;
         }
         case "error":
           if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} }
@@ -604,9 +606,8 @@
     function spawn(relayId, agent, cwd, task, customCmd) {
       const relay = relays.find((r) => r.id === relayId);
       if (!relay || relay.status !== "connected") { showSpawnResult("relay not connected", false); return; }
-      const client_id = crypto.randomUUID(); pendingSpawns.add(client_id);
+      const client_id = crypto.randomUUID(); pendingCwd.set(client_id, cwd);
       const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (task ? [task] : []);
-      window.__menagerie._pendingCwd = cwd;
       send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id });
       showSpawnResult("spawning…", true);
     }
@@ -675,7 +676,17 @@
       const s = sessions.get(tile.dataset.sid); if (s) setTimeout(() => fitTile(s), 30);
     }
     function exitFullscreen() { document.querySelectorAll(".tile.fullscreen").forEach((x) => x.classList.remove("fullscreen")); for (const s of sessions.values()) if (s.tile && !s.replay && s.status !== "exited") setTimeout(() => fitTile(s), 30); }
-    function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } }
+    // Tear a tile down completely: stop timers, dispose the xterm instance, drop from the map.
+    function destroyTile(s) {
+      if (!s) return;
+      s.playing = false;
+      if (s.timer) clearInterval(s.timer);
+      if (s.tick) clearInterval(s.tick);
+      try { s.term && s.term.dispose(); } catch {}
+      if (s.tile) s.tile.remove();
+      sessions.delete(s.id);
+    }
+    function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } updateAttention(); }
     function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited" || !sess.token) return; send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
     function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
     function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
@@ -725,7 +736,7 @@
       const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen (click to toggle)"; full.setAttribute("aria-label", "Toggle fullscreen"); full.textContent = "⛶";
       full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
       const close = document.createElement("button"); close.className = "btn icon ghost"; close.title = "Close"; close.setAttribute("aria-label", "Close replay"); close.textContent = "✕";
-      close.addEventListener("click", () => { r.playing = false; clearInterval(r.tick); tile.remove(); sessions.delete(r.id); updateEmpty(); });
+      close.addEventListener("click", () => { destroyTile(r); updateEmpty(); });
       head.append(dot, title, spacer, full, close);
       makeDraggable(tile, head);
       const termEl = document.createElement("div"); termEl.className = "tile-term";
@@ -754,7 +765,7 @@
       renderTo(0);
     }
 
-    function bytesFromB64(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+    function bytesFromB64(b64) { try { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; } catch { return null; } }
     function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
     // ===== rendering ==================================================
@@ -793,7 +804,6 @@
       const sid = focused ? focused.dataset.sid : null;
       document.querySelectorAll("#sbSessions .sb-row").forEach((row) => row.classList.toggle("active", row.dataset.sid === sid));
     }
-    function liveCount() { let n = 0; for (const s of sessions.values()) if (!s.replay) n++; return n; }
     function updateEmpty() {
       const el = $("emptyState");
       if ($("grid").children.length > 0) { el.style.display = "none"; return; }
@@ -984,10 +994,6 @@
     });
     $("wsSkipBtn").addEventListener("click", () => { FS.handle = null; FS.label = "in-memory"; $("workspace").textContent = "in-memory (not saved)"; $("wsName").textContent = "in-memory (not saved)"; closeWorkspaceOverlay(); ensureLocalhostRelay(); renderAll(); });
     document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeAllModals(); }));
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeAllModals();
-      else if (e.key === "n" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !anyModalOpen()) openModal("spawnScrim");
-    });
     let _fitT; window.addEventListener("resize", () => { clearTimeout(_fitT); _fitT = setTimeout(() => { for (const s of sessions.values()) if (s.status !== "exited") fitTile(s); }, 150); });
 
     // Hotkeys (handoff §10): n spawn · g+digit focus tile · f fullscreen · Tab cycle · Esc close/restore.
