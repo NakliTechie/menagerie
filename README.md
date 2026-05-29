@@ -12,14 +12,23 @@ The page *is* the app. It streams each agent's terminal from small **relays** yo
 
 A relay is one small binary you run **once per machine** — not per agent. It launches and streams *every* agent on that box, so you start it once and leave it running.
 
-**macOS / Linux — download & run** (no Go, no build step):
+**Install it** — Homebrew (macOS / Linux), no Go, no build step:
 
 ```sh
-# Pick your platform: darwin-arm64 (Apple Silicon) · darwin-amd64 (Intel Mac)
-#                      linux-amd64 · linux-arm64
+brew install naklitechie/tap/menagerie-relay
+```
+
+…or grab the prebuilt binary directly — `darwin-arm64` (Apple Silicon), `darwin-amd64` (Intel), `linux-amd64`, or `linux-arm64`:
+
+```sh
 curl -L -o menagerie-relay \
   https://github.com/NakliTechie/menagerie/releases/latest/download/menagerie-relay-darwin-arm64
 chmod +x menagerie-relay
+```
+
+**Run it** — once per machine, then leave it running (drop the `./` if you installed via Homebrew):
+
+```sh
 ./menagerie-relay init     # prints your registration token
 ./menagerie-relay serve    # leave this running
 ```
@@ -28,7 +37,7 @@ Then open the app and paste the token into **Settings** — a guided checklist w
 
 > **Windows:** there's no native Windows build (the relay needs a Unix PTY) — run the **`linux-amd64`** binary inside **[WSL2](https://learn.microsoft.com/windows/wsl/install)**. The app reaches it over `localhost`, same as on Mac/Linux.
 >
-> **macOS Gatekeeper:** grabbing the binary with `curl` (above) runs clean — only *browser* downloads get quarantined. If you download it from the Releases page in a browser, clear the flag once: `xattr -dr com.apple.quarantine menagerie-relay`.
+> **macOS Gatekeeper:** Homebrew **and** `curl` both run clean — only *browser* downloads get quarantined. If you grab it from the Releases page in a browser, clear the flag once: `xattr -dr com.apple.quarantine menagerie-relay`.
 >
 > **Prefer to build it?** `go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest`
 
