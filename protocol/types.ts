@@ -30,7 +30,7 @@ export type Transport = "pty";
 export type SignalKind = "kill" | "interrupt" | "resize";
 
 /** Async lifecycle events a relay emits for a session. */
-export type SessionEvent = "exited" | "idle" | "needs_input" | "child_spawned" | "rate_limited";
+export type SessionEvent = "exited" | "idle" | "needs_input" | "child_spawned" | "rate_limited" | "stalled";
 
 /**
  * Error codes carried in `error` frames. The set is open-ended (§4): clients

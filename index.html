@@ -106,6 +106,7 @@
     .tile.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
     .s-needs_token { background: var(--yellow); }
     .s-rate_limited { background: var(--orange); box-shadow: 0 0 0 3px rgba(219,138,58,.18); animation: pulse 1.8s ease-in-out infinite; }
+    .s-stalled { background: var(--red); box-shadow: 0 0 0 3px rgba(248,81,73,.18); animation: pulse .7s ease-in-out infinite; }
 
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
     .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--muted); background: linear-gradient(180deg, var(--panel), transparent); }
@@ -615,6 +616,7 @@
             s.endedAt = Date.now(); s.exitCode = msg.exit_code;
             flushSession(s).then(() => writeSessionMeta(s)).then(refreshPastSessions);
           } else if (msg.event === "needs_input") { if (s.status !== "needs_input") beep(); setSessionStatus(s, "needs_input"); }
+          else if (msg.event === "stalled") { if (s.status !== "stalled") beep(); setSessionStatus(s, "stalled"); } // likely looping — sticky until you act
           else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
           else if (msg.event === "idle") setSessionStatus(s, "idle");
           break;
@@ -778,10 +780,10 @@
       sessions.delete(s.id);
     }
     function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } updateAttention(); }
-    function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited" || !sess.token) return; send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
+    function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited" || !sess.token) return; if (sess.status === "stalled") setSessionStatus(sess, "running"); send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
     function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
     function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
-    function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
+    function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input" || s.status === "stalled").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
     // Soft two-tone chime when an agent transitions into needs_input. Web Audio,
     // so no asset to bundle; first call may be gated until the user interacts.
     let _audioCtx;
