@@ -239,8 +239,14 @@ the `tmux` config key: `"auto"` (use tmux if present — default), `"on"`, `"off
   and interrupt (`^C`) act on the agent inside the session, not just the attach.
 - **Doesn't survive (yet):** a full OS reboot kills the tmux server too, unless you
   add tmux persistence (e.g. tmux-resurrect/continuum).
-- **Not yet:** adopting tmux sessions you started *yourself* (`tmux new -s x`) —
-  only Menagerie-created `menagerie-*` sessions are adopted today.
+- **Adopt your own sessions (opt-in):** set `adopt_foreign_tmux = true` and any tmux
+  session you start yourself (`tmux new -s grok`, then run your agent) also shows up
+  as a tile — Menagerie attaches read-write so you can steer it from the app or your
+  phone. Off by default so unrelated tmux sessions don't appear. Caveats while on:
+  it surfaces *every* live tmux session (you may see more than you expect); tmux
+  shares one window size across attached clients, so Menagerie and a terminal you
+  have open on the same session will resize each other; and a tile's **Kill** really
+  runs `kill-session`.
 
 ### Linux — systemd (user service)
 

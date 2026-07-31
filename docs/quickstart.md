@@ -42,8 +42,8 @@ restarting itself? `./menagerie-relay service install`.
 > **What the relay does:** it runs the agents you launch from the app with
 > **+ Spawn**, each in its own terminal it streams to the page. It does *not*
 > watch other terminals you already have open — start agents from Menagerie.
-> (Want a terminal you started elsewhere to show up? That needs tmux — on the
-> roadmap.)
+> (Want a terminal you started *yourself* to show up? Run it in tmux and set
+> `adopt_foreign_tmux = true` — see [relay-setup.md](./relay-setup.md).)
 
 ## 3. Open the app
 
