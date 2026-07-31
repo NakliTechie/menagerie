@@ -220,12 +220,27 @@ it, and creates the config first on a fresh machine. On a headless Linux box,
 `loginctl enable-linger "$USER"` keeps the user service running across reboots
 without an active login session.
 
-> Note: this keeps the *relay* always-on. Agents you spawned still stop when the
-> relay restarts (they're its children) — running them under tmux to survive a
-> restart is on the roadmap.
+> This keeps the *relay* always-on (survives crashes, starts at login). With tmux
+> (the default — see below), the **agents survive a relay restart too**.
 
 Prefer to wire it up by hand? Example unit files live in
 [`../relay-go/examples/`](../relay-go/examples/).
+
+## Durability (tmux)
+
+When tmux is installed, the relay runs each agent inside a detached
+`menagerie-<id>` tmux session and merely attaches a PTY to it. The agent is a
+child of the persistent tmux server, not the relay — so if the relay crashes or
+you restart it, the agent keeps running, and on reconnect the relay re-discovers
+its `menagerie-*` sessions and re-attaches (your tiles come back). Controlled by
+the `tmux` config key: `"auto"` (use tmux if present — default), `"on"`, `"off"`.
+
+- **Survives:** a relay crash/restart, and a dropped WebSocket. Kill (`kill-session`)
+  and interrupt (`^C`) act on the agent inside the session, not just the attach.
+- **Doesn't survive (yet):** a full OS reboot kills the tmux server too, unless you
+  add tmux persistence (e.g. tmux-resurrect/continuum).
+- **Not yet:** adopting tmux sessions you started *yourself* (`tmux new -s x`) —
+  only Menagerie-created `menagerie-*` sessions are adopted today.
 
 ### Linux — systemd (user service)
 
