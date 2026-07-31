@@ -29,11 +29,12 @@ chmod +x menagerie-relay
 **Run it** — once per machine, then leave it running (drop the `./` if you installed via Homebrew):
 
 ```sh
-./menagerie-relay init     # prints your registration token
-./menagerie-relay serve    # leave this running
+./menagerie-relay serve    # first run sets up config + copies your token; leave it running
 ```
 
-Then open the app and paste the token into **Settings** — a guided checklist walks you the rest of the way. Full step-by-step with screenshots: **[the walkthrough](https://menagerie.naklitechie.com/docs/walkthrough/)**.
+First run creates the config and **copies a registration token to your clipboard**. Open the app, paste it into the **localhost relay** card, and hit Connect — a guided checklist walks you the rest of the way. Full step-by-step with screenshots: **[the walkthrough](https://menagerie.naklitechie.com/docs/walkthrough/)**. Want the relay always-on (starts at login, restarts itself)? `./menagerie-relay service install`.
+
+> **What Menagerie shows:** the relay runs the agents you launch from the app with **+ Spawn** — each in its own terminal it streams here. It doesn't watch other terminals you have open. (Adopting a terminal you started elsewhere needs tmux — on the roadmap.)
 
 > **Windows:** there's no native Windows build (the relay needs a Unix PTY) — run the **`linux-amd64`** binary inside **[WSL2](https://learn.microsoft.com/windows/wsl/install)**. The app reaches it over `localhost`, same as on Mac/Linux.
 >

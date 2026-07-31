@@ -178,21 +178,18 @@ mv menagerie-relay-* menagerie-relay
 xattr -dr com.apple.quarantine menagerie-relay</pre>
       <p>Prefer to build it yourself? With <a href="https://go.dev/dl/" target="_blank" rel="noopener">Go 1.21+</a> — this puts <code>menagerie-relay</code> on your PATH, so drop the <code>./</code> from the commands below:</p>
       <pre>go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest</pre>
-      <p><strong>2 · Initialise it.</strong> Writes <code>~/.menagerie/relay.toml</code> with a generated registration token and a sensible default config.</p>
-      <pre>./menagerie-relay init</pre>
-      <p><strong>3 · Copy the registration token.</strong> The app needs it to authenticate against this relay. Print it any time:</p>
-      <pre>./menagerie-relay token print</pre>
-      <p><strong>4 · Allow your app's origin.</strong> The relay only accepts WebSocket connections from origins you list — that origin check is the security boundary. The hosted app (<code>https://menagerie.naklitechie.com</code>) is allowed out of the box; if you open Menagerie from somewhere else, add that origin to <code>allowed_origins</code> in the config:</p>
+      <p><strong>2 · Start it.</strong> First run creates <code>~/.menagerie/relay.toml</code> (a generated registration token + sensible defaults), <strong>copies the token to your clipboard</strong>, and starts listening on <code>127.0.0.1:7878</code>. Leave it running.</p>
+      <pre>./menagerie-relay serve</pre>
+      <p class="tip"><span class="bang">!</span><span>Lost the token? <code>./menagerie-relay token print</code> re-prints and re-copies it. Want the relay always-on — starting at login and restarting itself? <code>./menagerie-relay service install</code>.</span></p>
+      <p><strong>3 · Allow your app's origin.</strong> The relay only accepts WebSocket connections from origins you list — that origin check is the security boundary. The hosted app (<code>https://menagerie.naklitechie.com</code>) is allowed out of the box; if you open Menagerie from somewhere else, add that origin to <code>allowed_origins</code> in the config and restart <code>serve</code>:</p>
       <pre><span class="c"># ~/.menagerie/relay.toml</span>
 allowed_origins = [
   "https://menagerie.naklitechie.com",
   "http://localhost:8000",
 ]</pre>
       <p class="tip"><span class="bang">!</span><span>Origins are matched exactly, and <code>"null"</code> is deliberately <em>not</em> allowed by default — a sandboxed iframe also sends <code>Origin: null</code>, so allowing it would let any web page through. Add it by hand only for <code>file://</code> use.</span></p>
-      <p><strong>5 · (Optional) Wire up agents.</strong> The <code>[agents]</code> table maps an agent id to the command that launches it — e.g. <code>claude-code → claude</code>, <code>mini → mini</code>. The built-in <code>custom</code> agent runs whatever command you hand it, so you can drive any TUI agent without writing a shim.</p>
-      <p><strong>6 · Start serving.</strong> Listens on <code>127.0.0.1:7878</code> by default. For a relay on another machine, front it with TLS (<code>wss://</code>) at a reachable address.</p>
-      <pre>./menagerie-relay serve</pre>
-      <p>That's the whole setup — the relay keeps running and its sessions outlive page reloads. Now open the app and connect to it.</p>
+      <p><strong>4 · (Optional) Wire up agents.</strong> The <code>[agents]</code> table maps an agent id to the command that launches it — e.g. <code>claude-code → claude</code>, <code>mini → mini</code>. The built-in <code>custom</code> agent runs whatever command you hand it (e.g. <code>grok</code>), so you can drive any TUI agent without writing a shim.</p>
+      <p>That's the whole setup — the relay keeps running and its sessions outlive page reloads. Now open the app and connect to it. Menagerie streams the agents you launch here with <strong>+ Spawn</strong> — it doesn't watch other terminals you have open.</p>
     </section>
 
     <!-- STEP 1 -->
@@ -217,8 +214,8 @@ allowed_origins = [
     <section class="step">
       <h2 class="step"><span class="step-num">02</span>Register a relay</h2>
       <p>
-        Open Settings, paste the relay URL and its registration token (printed by
-        <code>menagerie-relay token print</code>), and add it. The browser opens a WebSocket, receives the
+        Open Settings, paste the relay URL and its registration token (already on your clipboard from
+        <code>serve</code>), and add it. The browser opens a WebSocket, receives the
         relay's <code>hello</code>, and registers. Once connected, the relay shows a green dot with its
         host OS / arch and the agents it can spawn.
       </p>

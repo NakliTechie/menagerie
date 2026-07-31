@@ -18,39 +18,34 @@ go build ./cmd/menagerie-relay   # → ./menagerie-relay
 This produces a single binary with no runtime dependencies. (Pre-built binaries
 for darwin/linux × amd64/arm64 ship on GitHub Releases once the relay is tagged.)
 
-## 2. Initialize it
-
-```sh
-./menagerie-relay init
-```
-
-`init` writes `~/.menagerie/relay.toml` (with `0600` perms — it holds a secret)
-and prints a **registration token** once:
-
-```
-Created /Users/you/.menagerie/relay.toml
-Relay name: m4pro-home
-Listening:  127.0.0.1:7878  (edit to 0.0.0.0:PORT to expose beyond localhost)
-
-Registration token — paste into Menagerie → Settings → Add relay:
-  k3rT9_…opaque-base64url…
-
-Then run `menagerie-relay serve`.
-```
-
-Copy that token. If you lose it, `./menagerie-relay token print` re-prints it.
-
-## 3. Start serving
+## 2. Start it
 
 ```sh
 ./menagerie-relay serve
 ```
 
-The relay listens on `127.0.0.1:7878` by default (local only — the safest
-default). It logs the listen address, whether TLS is on, and the allowed
-origins. Leave it running.
+First run writes `~/.menagerie/relay.toml` (`0600` perms — it holds a secret),
+**copies a registration token to your clipboard**, and starts listening:
 
-## 4. Open the app
+```
+First run — created /Users/you/.menagerie/relay.toml (relay "m4pro-home", listening 127.0.0.1:7878).
+✓ Registration token copied to your clipboard.
+  In Menagerie, paste it into the localhost relay card and hit Connect.
+  k3rT9_…opaque-base64url…
+```
+
+The relay listens on `127.0.0.1:7878` by default (local only — the safest
+default). Leave it running. Lost the token? `./menagerie-relay token print`
+re-prints (and re-copies) it. Want it always-on — starting at login and
+restarting itself? `./menagerie-relay service install`.
+
+> **What the relay does:** it runs the agents you launch from the app with
+> **+ Spawn**, each in its own terminal it streams to the page. It does *not*
+> watch other terminals you already have open — start agents from Menagerie.
+> (Want a terminal you started elsewhere to show up? That needs tmux — on the
+> roadmap.)
+
+## 3. Open the app
 
 The eventual home is the hosted single-file app at
 **menagerie.naklitechie.com**. Until that deploy lands, serve it
@@ -74,7 +69,7 @@ On first launch the app asks for a **workspace folder** — pick any directory.
 Menagerie stores your relay registry and session trajectories there and nowhere
 else. (You can choose **Skip (in-memory)** to try it without persistence.)
 
-## 5. Add the relay
+## 4. Add the relay
 
 Click the **⚙ settings** gear → under **Relays**:
 
@@ -85,7 +80,7 @@ Click the **⚙ settings** gear → under **Relays**:
 The app opens the WebSocket, reads the relay's `hello`, registers with the
 token, and the relay's status chip turns green (connected).
 
-## 6. Spawn an agent
+## 5. Spawn an agent
 
 Click **+ Spawn** (or press `n`):
 

@@ -26,42 +26,50 @@ the relay is tagged `relay-v*`.
 ## Commands
 
 ```
-menagerie-relay init           generate ~/.menagerie/relay.toml + a registration token
-menagerie-relay serve          start the relay (the default when a config exists)
-menagerie-relay token print    re-print the registration token
-menagerie-relay token rotate   generate a new registration token (invalidates the old)
+menagerie-relay serve             start the relay. First run creates the config and
+                                  copies the registration token to your clipboard.
+menagerie-relay service install   run the relay always-on (launchd / systemd --user)
+menagerie-relay service uninstall remove the always-on service
+menagerie-relay service status    is the always-on service running?
+menagerie-relay init              write the config + token only (no serve)
+menagerie-relay token print       re-print (and copy) the registration token
+menagerie-relay token rotate      generate a new registration token (invalidates the old)
 ```
 
-Running `menagerie-relay` with no arguments is equivalent to `serve`.
-
-### `init`
-
-Creates `~/.menagerie/relay.toml` with a freshly generated registration token
-and the v1.0 shim set (`mini`, `claude-code`, `custom`), then prints the token
-to stdout **once**. The config directory is created `0700` and the file `0600`
-because it holds a secret.
-
-`init` refuses to overwrite an existing config — to change the token on a relay
-that's already set up, use `token rotate` instead.
+Running `menagerie-relay` with no arguments is equivalent to `serve`. For most
+people, `serve` is the only command they ever type.
 
 ### `serve`
 
-Loads the config and starts the WebSocket server on `listen`. It logs the relay
-name, listen address, whether TLS is active, and the configured origins:
+Starts the WebSocket server on `listen`. **On first run it creates
+`~/.menagerie/relay.toml`** (dir `0700`, file `0600` — it holds a secret) with a
+fresh registration token and the v1.0 shim set (`mini`, `claude-code`, `custom`),
+so a single command gets a new machine going. When run in a terminal it also
+**copies the registration token to your clipboard** and prints it; when run
+non-interactively (e.g. as a service) it stays quiet, keeping the token out of
+log files. It logs the relay name, listen address, TLS state, and origins:
 
 ```
 relay "m4pro-home" listening on 127.0.0.1:7878 (tls=false, origins=[https://menagerie.naklitechie.com])
 ```
 
-`serve` shuts down cleanly on `SIGINT`/`SIGTERM`. It refuses to start if the
-config is missing (run `init` first) or if `registration_token` is empty (run
-`token rotate`).
+`serve` shuts down cleanly on `SIGINT`/`SIGTERM`.
+
+### `init`
+
+Optional — `serve` now does this on first run. `init` just writes the config +
+token (no serving), for when you want to review/edit `relay.toml` before starting.
+It refuses to overwrite an existing config; use `token rotate` to change the token.
+
+### `service install` / `uninstall` / `status`
+
+Keep the relay always-on — see [Running as a service](#running-as-a-service).
 
 ### `token print`
 
-Re-prints the current registration token — useful when re-registering the relay
-in the app after clearing browser state. Prints only the token, so it pipes
-cleanly:
+Re-prints the current registration token — useful when re-registering after
+clearing browser state. In a terminal it also copies the token to your clipboard;
+when piped it prints only the token, so it still composes cleanly:
 
 ```sh
 menagerie-relay token print | pbcopy
@@ -198,8 +206,26 @@ terminates TLS, or a CA-issued cert).
 
 ## Running as a service
 
-Example unit files live in [`../relay-go/examples/`](../relay-go/examples/).
-Run `menagerie-relay init` once first so the config exists.
+Let the relay start at login and restart itself if it exits:
+
+```sh
+menagerie-relay service install     # launchd on macOS, systemd --user on Linux
+menagerie-relay service status      # is it running?
+menagerie-relay service uninstall   # remove it
+```
+
+`install` writes the unit (a launchd LaunchAgent on macOS with `RunAtLoad` +
+`KeepAlive`, or a systemd `--user` unit on Linux with `Restart=always`), loads
+it, and creates the config first on a fresh machine. On a headless Linux box,
+`loginctl enable-linger "$USER"` keeps the user service running across reboots
+without an active login session.
+
+> Note: this keeps the *relay* always-on. Agents you spawned still stop when the
+> relay restarts (they're its children) — running them under tmux to survive a
+> restart is on the roadmap.
+
+Prefer to wire it up by hand? Example unit files live in
+[`../relay-go/examples/`](../relay-go/examples/).
 
 ### Linux — systemd (user service)
 

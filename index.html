@@ -308,16 +308,15 @@
       <header><h2 style="margin:0">Menagerie<span style="color:var(--accent)">.</span></h2><span class="spacer"></span><button class="btn icon ghost" data-close aria-label="Close">✕</button></header>
       <div class="body">
         <p class="help-lede">A browser-native console for running and watching <strong>fleets of coding agents</strong> — Claude Code, Codex, opencode, Aider and friends — side by side in one window.</p>
-        <div class="note"><strong>How it works.</strong> This page <em>is</em> the whole app. It talks over WebSocket to small <em>relays</em> you run next to your agents (your laptop, a server, wherever). Each relay streams its agents' terminals here. No NakliTechie server, no account, no telemetry — nothing leaves your machines.</div>
+        <div class="note"><strong>How it works.</strong> This page <em>is</em> the whole app. It talks over WebSocket to small <em>relays</em> you run next to your agents (your laptop, a server, wherever). A relay runs the agents you launch here with <strong>+ Spawn</strong> — each in its own terminal it streams to this page. <em>(It doesn't watch terminals you open elsewhere — spawn from here.)</em> No NakliTechie server, no account, no telemetry — nothing leaves your machines.</div>
         <div>
           <div class="section-title">Get going</div>
-          <p class="help-step-lede"><strong>1 · Run a relay.</strong> One small server you run <strong>once per machine</strong> — not per agent; it launches and streams every agent on that box, so leave it running. Install it with Homebrew (macOS / Linux):</p>
+          <p class="help-step-lede"><strong>1 · Run a relay.</strong> One small server you run <strong>once per machine</strong> — not per agent; it runs and streams every agent you spawn on that box, so leave it running. Install with Homebrew (macOS / Linux), then start it:</p>
           <div class="cmd"><code>brew install naklitechie/tap/menagerie-relay</code><button class="copybtn" type="button" data-cmd="brew install naklitechie/tap/menagerie-relay">Copy</button></div>
-          <div class="cmd"><code>menagerie-relay init</code><button class="copybtn" type="button" data-cmd="menagerie-relay init">Copy</button></div>
           <div class="cmd"><code>menagerie-relay serve</code><button class="copybtn" type="button" data-cmd="menagerie-relay serve">Copy</button></div>
-          <p class="help-step-lede" style="font-size:12.5px">No Homebrew? <a href="https://github.com/NakliTechie/menagerie/releases/latest" target="_blank" rel="noopener">Download the binary</a> (then <code>chmod +x</code> and run it as <code>./menagerie-relay</code>), or build with <code>go install …/menagerie-relay@latest</code>. macOS browser-downloads only: <code>xattr -dr com.apple.quarantine menagerie-relay</code>.</p>
-          <p class="help-step-lede"><strong>2 · Connect it.</strong> Open <strong>Settings (⚙)</strong> — the <em>localhost</em> relay is listed there with a step-by-step that detects it and walks you through pasting the token.</p>
-          <p class="help-step-lede"><strong>3 · Spawn.</strong> Hit <strong>+ Spawn</strong>, pick an agent, and go. <strong>◐</strong> switches light / dark.</p>
+          <p class="help-step-lede" style="font-size:12.5px">First run creates the config and <strong>copies the registration token to your clipboard</strong>. Want it always-on (starts at login, restarts itself)? <code>menagerie-relay service install</code>. No Homebrew? <a href="https://github.com/NakliTechie/menagerie/releases/latest" target="_blank" rel="noopener">Download the binary</a> (<code>chmod +x</code>, run as <code>./menagerie-relay</code>), or <code>go install …/menagerie-relay@latest</code>. macOS browser-downloads: <code>xattr -dr com.apple.quarantine menagerie-relay</code>.</p>
+          <p class="help-step-lede"><strong>2 · Connect it.</strong> Open <strong>Settings (⚙)</strong> — the <em>localhost</em> relay is listed there. Your token is already on your clipboard: paste it and hit Connect.</p>
+          <p class="help-step-lede"><strong>3 · Spawn.</strong> Hit <strong>+ Spawn</strong>, pick an agent (or <em>custom</em> → any command, e.g. <code>grok</code>), and go — Menagerie runs it and streams its terminal here. <strong>◐</strong> switches light / dark.</p>
         </div>
         <div class="help-links">
           <a class="btn" href="docs/walkthrough/index.html" target="_blank" rel="noopener">Walkthrough</a>
@@ -955,11 +954,11 @@
       const a = mkStep(1, s1, "Start the relay on this machine", s1 === "active" ? "not detected" : "", false);
       if (s1 === "active") {
         const p = document.createElement("p"); p.className = "hint"; p.style.margin = "4px 0 2px";
-        p.innerHTML = "One small server <strong>per machine</strong> (not per agent) — it runs all your agents on this box. Install it with Homebrew (and leave it running):";
+        p.innerHTML = "One small server <strong>per machine</strong> (not per agent) — it runs the agents you spawn on this box. Install with Homebrew, then start it (first run creates the config and copies the token to your clipboard):";
         a.body.appendChild(p);
-        a.body.append(cmdRow("brew install naklitechie/tap/menagerie-relay"), cmdRow("menagerie-relay init"), cmdRow("menagerie-relay serve"));
+        a.body.append(cmdRow("brew install naklitechie/tap/menagerie-relay"), cmdRow("menagerie-relay serve"));
         const alt = document.createElement("p"); alt.className = "hint"; alt.style.margin = "7px 0 0";
-        alt.innerHTML = `No Homebrew? <a href="${RELEASES_URL}" target="_blank" rel="noopener">Download the binary</a> (then <code>chmod +x</code> and run it as <code>./menagerie-relay</code>), or build with <code>go install</code>. macOS browser-downloads: <code>xattr -dr com.apple.quarantine menagerie-relay</code>.`;
+        alt.innerHTML = `Always-on (starts at login, restarts itself)? <code>menagerie-relay service install</code>. No Homebrew? <a href="${RELEASES_URL}" target="_blank" rel="noopener">Download the binary</a> (<code>chmod +x</code>, run as <code>./menagerie-relay</code>), or <code>go install</code>. macOS browser-downloads: <code>xattr -dr com.apple.quarantine menagerie-relay</code>.`;
         a.body.appendChild(alt);
         const foot = document.createElement("p"); foot.className = "hint"; foot.style.margin = "8px 0 0";
         const recheck = document.createElement("button"); recheck.className = "link"; recheck.textContent = "Recheck now";
@@ -971,6 +970,9 @@
       const b = mkStep(2, s2, "Paste its registration token", (s2 === "active" && !badToken) ? "relay detected" : "", true);
       if (s2 === "active") {
         if (badToken && r.error) { const e = document.createElement("p"); e.className = "inline-error"; e.style.margin = "2px 0 0"; e.textContent = r.error; b.body.appendChild(e); }
+        const bh = document.createElement("p"); bh.className = "hint"; bh.style.margin = "2px 0 0";
+        bh.innerHTML = "Your token is on your clipboard from <code>serve</code> — just paste it below. (Lost it? <code>menagerie-relay token print</code> copies it again.)";
+        b.body.appendChild(bh);
         b.body.appendChild(cmdRow("menagerie-relay token print"));
         const rowi = document.createElement("div"); rowi.className = "row"; rowi.style.marginTop = "7px";
         const tok = document.createElement("input"); tok.id = "localTokenInput"; tok.type = "password"; tok.placeholder = "paste token here"; tok.autocomplete = "off"; tok.spellcheck = false;
