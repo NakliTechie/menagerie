@@ -2,12 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- viewport-fit=cover clears the notch; interactive-widget=resizes-content reflows for the soft keyboard. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="color-scheme" content="light dark" />
   <!-- Security posture, handoff §8. xterm.js from cdnjs with SRI; its CSS is inlined so style-src stays 'self'. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; img-src 'self' data:; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
   <title>Menagerie</title>
+  <!-- Installable PWA — home-screen + standalone, so "continue on your phone" feels native (iOS first). -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" content="#f9f9f8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1a2848" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Menagerie" />
   <!-- Apply the saved theme before first paint so dark users don't flash light. -->
   <script>try{if(localStorage.getItem('menagerie-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <!-- xterm.js 5.5.0 (cdnjs, unminified — cdnjs has no min.js for this version). UMD global: Terminal. -->
@@ -183,6 +194,32 @@
     .setup-step[data-state="pending"] .setup-title { color: var(--faint); }
     .setup-title .st { font-weight: 400; font-size: 12px; color: var(--faint); margin-left: 6px; }
     .setup-title .st.ok { color: var(--green); }
+
+    /* ================= Mobile (≤760px) — "continue on your phone" ================= *
+     * Sidebar becomes an off-canvas drawer (the session switcher); tiles go single-column
+     * and near-full-height so one agent reads clearly; footer pills get out of the way.  */
+    #drawerScrim { display: none; }
+    @media (max-width: 760px) {
+      .topbar { gap: 9px; padding: 0 10px; }
+      .workspace { display: none; }
+      .btn { padding: 9px 12px; }            /* fatter tap targets */
+      .btn.icon { padding: 9px 11px; }
+      .main { padding: 10px 10px 10px; }
+      .grid { grid-template-columns: 1fr; gap: 10px; }
+      /* leave room at the bottom for the soft-key bar so the terminal never hides behind it */
+      .tile { height: calc(100dvh - 140px); min-height: 320px; }
+      .tile.fullscreen { height: auto; }
+      .footer-nav { display: none; }
+      /* off-canvas drawer */
+      .sidebar { position: fixed; top: 52px; left: 0; bottom: 0; width: 82vw; max-width: 320px;
+                 transform: translateX(-100%); transition: transform .2s ease; z-index: 46;
+                 box-shadow: 0 0 40px rgba(0,0,0,.4); }
+      .sidebar.collapsed { display: block; }  /* .collapsed is desktop-only; drawer state rules on mobile */
+      .sidebar.open { transform: translateX(0); }
+      .sb-row { padding: 10px 10px; font-size: 13.5px; }   /* touch-sized rows */
+      #drawerScrim { display: none; position: fixed; inset: 52px 0 0 0; background: rgba(0,0,0,.45); z-index: 45; }
+      #drawerScrim.open { display: block; }
+    }
   </style>
 </head>
 <body>
@@ -211,6 +248,8 @@
       <div class="grid" id="grid"></div>
     </main>
   </div>
+  <!-- Mobile drawer scrim — tap to close the off-canvas sidebar. -->
+  <div id="drawerScrim"></div>
 
   <!-- Help / About (z-index above the workspace overlay so it shows first on a new visit) -->
   <div class="scrim" id="helpScrim" data-close style="z-index:110">
@@ -660,6 +699,7 @@
     function focusTile(sess) { if (sess.tile) focusTileEl(sess.tile); }
     function tilesInOrder() { return [...document.querySelectorAll("#grid .tile")]; }
     function focusTileEl(tile) {
+      if (isMobile()) closeDrawer();   // picking an agent from the drawer dismisses it
       document.querySelectorAll(".tile.focused").forEach((t) => t.classList.remove("focused"));
       tile.classList.add("focused");
       const s = sessions.get(tile.dataset.sid); if (s && s.term) s.term.focus();
@@ -721,6 +761,7 @@
 
     // ===== replay =====================================================
     async function openReplay(meta) {
+      closeDrawer();
       const bytes = await FS.readBytes([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".pty"]);
       if (!bytes) { alert("No trajectory captured for this session."); return; }
       const r = { id: "replay-" + meta.id, agent: meta.agent, relayName: meta.relay_name || "", replay: true, status: "replay", bytes, pos: 0, playing: false, speed: 1, cols: 0, rows: 0 };
@@ -943,7 +984,7 @@
     function closeWorkspaceOverlay() { $("wsOverlay").classList.remove("open"); }
     function wsError(t) { $("wsErr").textContent = t; }
 
-    function openModal(id) { $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") refreshPastSessions(); }
+    function openModal(id) { closeDrawer(); $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") refreshPastSessions(); }
     function closeModal(id) { $(id).classList.remove("open"); }
     function closeAllModals() { document.querySelectorAll(".scrim").forEach((s) => s.classList.remove("open")); }
     function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")) || $("wsOverlay").classList.contains("open"); }
@@ -976,7 +1017,17 @@
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("themeBtn").addEventListener("click", toggleTheme);
     document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest(".copybtn"); if (b && b.dataset.cmd) { e.preventDefault(); copyText(b.dataset.cmd, b); } });
-    $("sidebarToggle").addEventListener("click", () => { $("sidebar").classList.toggle("collapsed"); for (const s of sessions.values()) if (s.tile && !s.replay && s.status !== "exited") setTimeout(() => fitTile(s), 30); });
+    // ☰ toggles the sidebar: a persistent collapse on desktop, an off-canvas drawer on mobile.
+    const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
+    function refitTiles() { for (const s of sessions.values()) if (s.tile && !s.replay && s.status !== "exited") setTimeout(() => fitTile(s), 30); }
+    function closeDrawer() { $("sidebar").classList.remove("open"); $("drawerScrim").classList.remove("open"); }
+    function toggleSidebar() {
+      const sb = $("sidebar");
+      if (isMobile()) { const open = sb.classList.toggle("open"); $("drawerScrim").classList.toggle("open", open); }
+      else { sb.classList.toggle("collapsed"); refitTiles(); }
+    }
+    $("sidebarToggle").addEventListener("click", toggleSidebar);
+    $("drawerScrim").addEventListener("click", closeDrawer);
     $("spawnRelay").addEventListener("change", renderAgentOptions);
     $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
     $("addRelayBtn").addEventListener("click", () => {
@@ -1010,7 +1061,15 @@
 
     window.__menagerie = { relays, sessions, addRelay, FS,
       test: { async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
-              async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); } } };
+              async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); },
+              // Fabricate a rendered tile with no relay (input no-ops) — for offline layout/keyboard testing.
+              fakeSession(agent) {
+                const sess = { id: "fake-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent: agent || "claude-code",
+                  status: "running", startedAt: Date.now(), token: "fake", cwd: "~/code", cols: 0, rows: 0, term: null, pending: [], flushing: false };
+                sessions.set(sess.id, sess); if (window.Terminal) createTile(sess);
+                if (sess.term) sess.term.write("\x1b[1;32m❯\x1b[0m claude-code · fleet demo\r\n\r\nEditing src/app.ts …\r\n\x1b[33m? Apply this change? (y/n)\x1b[0m ");
+                return sess.id;
+              } } };
 
     initTheme();
     renderAll();

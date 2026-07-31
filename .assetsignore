@@ -3,6 +3,12 @@
 # so a Cloudflare deploy never exposes relay-go/, protocol/, plan/, etc.
 /*
 !/index.html
+# PWA app-shell sidecars (installability): manifest + icons.
+!/manifest.webmanifest
+!/icon.svg
+!/icon-180.png
+!/icon-192.png
+!/icon-512.png
 # Re-include only docs/walkthrough/** (the user-facing guide + its screenshots).
 !/docs
 /docs/*

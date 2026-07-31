@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Menagerie">
+  <!-- Full-bleed navy (Rangrez "Kutch Bhunga") so the icon works masked or square. -->
+  <rect width="512" height="512" fill="#1a2848"/>
+  <!-- A 2×2 grid of tiles = the fleet console. One cream tile with an accent dot = an agent that needs you. -->
+  <rect x="112" y="112" width="130" height="130" rx="26" fill="#e0573a"/>
+  <rect x="270" y="112" width="130" height="130" rx="26" fill="#e0573a"/>
+  <rect x="112" y="270" width="130" height="130" rx="26" fill="#e0573a"/>
+  <rect x="270" y="270" width="130" height="130" rx="26" fill="#f4ecd8"/>
+  <circle cx="335" cy="335" r="27" fill="#e0573a"/>
+</svg>
