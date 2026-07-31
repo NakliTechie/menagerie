@@ -59,11 +59,11 @@ Open <http://localhost:8000/> in a Chromium-based browser (the app uses the
 [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)
 for state, which Firefox and Safari don't yet fully support).
 
-> **Origin note.** The relay's default `allowed_origins` is just
-> `https://menagerie.naklitechie.com`. To connect from `http://localhost:8000`
-> during local dev, add that origin to `allowed_origins` in `relay.toml` and
-> restart the relay — see [relay-setup.md](./relay-setup.md). Do **not** add
-> `"null"`; [security-model.md](./security-model.md) explains why.
+> **Origin note.** A loopback relay (the default `127.0.0.1`) auto-accepts
+> `http://localhost:PORT` origins, so serving the app from `http://localhost:8000`
+> just works — no config change. (An *exposed* relay lists its origins explicitly;
+> see [relay-setup.md](./relay-setup.md).) Do **not** add `"null"`;
+> [security-model.md](./security-model.md) explains why.
 
 On first launch the app asks for a **workspace folder** — pick any directory.
 Menagerie stores your relay registry and session trajectories there and nowhere

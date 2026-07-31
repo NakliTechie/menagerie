@@ -55,6 +55,18 @@ past the origin gate and still must pass Gate 2.
 The default allowlist is exactly `["https://menagerie.naklitechie.com"]` — the
 hosted app and nothing else.
 
+**Localhost convenience (loopback relays only).** When the relay is bound to a
+loopback address (`127.0.0.1`, `::1`, or `localhost` — the default), it also
+accepts `http(s)://localhost`, `http(s)://127.0.0.1`, and `http(s)://[::1]`
+origins on any port, so a local dev or preview server connects without editing
+the allowlist. This does **not** weaken the gate against the web: a page's
+`Origin` is its own `scheme://host:port` and cannot be forged, so only a page
+*actually served from loopback* matches — `https://evil.example` (or even
+`http://localhost.evil.com`) never does, and DNS-rebinding doesn't change a
+page's origin. A relay you expose on `0.0.0.0` gets **no** such convenience — it
+must list its origins explicitly. Opt out entirely with
+`allow_localhost_origins = false`.
+
 ### Gate 2 — registration + session tokens
 
 Two opaque random tokens (32 bytes, base64url — no JWT, no PKI, no expiry
