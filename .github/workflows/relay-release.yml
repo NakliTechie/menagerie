@@ -52,9 +52,9 @@ jobs:
           1. Download the file for your OS/arch below.
           2. \`chmod +x menagerie-relay-*\`
           3. macOS only — clear Gatekeeper: \`xattr -dr com.apple.quarantine menagerie-relay-*\`
-          4. \`./menagerie-relay-* init\` then \`./menagerie-relay-* serve\`
+          4. \`./menagerie-relay-* serve\` — first run creates the config and copies the registration token to your clipboard; paste it into Menagerie. Always-on: \`./menagerie-relay-* service install\`.
 
-          Verify with \`shasum -a 256 -c SHA256SUMS\`. No prebuilt for your platform? \`go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest\`."
+          New in this release: one-command \`serve\` + token-to-clipboard, always-on \`service install\` (launchd/systemd), tmux-backed sessions that survive a relay restart, and loop/stall detection. Verify with \`shasum -a 256 -c SHA256SUMS\`. No prebuilt for your platform? \`go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest\`."
           # Idempotent: create the release, or just (re)upload assets if it already exists.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber menagerie-relay-* SHA256SUMS
