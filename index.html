@@ -220,6 +220,25 @@
       #drawerScrim { display: none; position: fixed; inset: 52px 0 0 0; background: rgba(0,0,0,.45); z-index: 45; }
       #drawerScrim.open { display: block; }
     }
+
+    /* ================= Soft-key accessory bar (TUI input on a phone) ================= *
+     * Coding TUIs need Esc / Ctrl-C / Tab / arrows constantly, and a mobile soft
+     * keyboard has none of them. This bar sits above the keyboard and writes the raw
+     * byte sequences to the focused session. Auto-shown on mobile; ⌨ toggles it anywhere. */
+    #keybar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 48; display: none;
+      gap: 6px; padding: 7px 8px; background: var(--panel); border-top: 1px solid var(--border);
+      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      box-shadow: 0 -2px 12px rgba(0,0,0,.14); }
+    #keybar::-webkit-scrollbar { display: none; }
+    #keybar.on { display: flex; }
+    #keybar .kb { flex: 0 0 auto; min-width: 44px; height: 40px; padding: 0 13px;
+      background: var(--elev); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+      font-family: var(--mono); font-size: 14px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center; user-select: none; }
+    #keybar .kb:active { background: var(--btn-hover); transform: translateY(1px); }
+    #keybar .kb.mod.armed { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+    #keybar .sep { flex: 0 0 auto; width: 1px; align-self: center; height: 22px; background: var(--border); margin: 0 2px; }
+    body.has-keybar .main { padding-bottom: 58px; }   /* keep the bar off the last tile row */
   </style>
 </head>
 <body>
@@ -230,6 +249,7 @@
     <span class="spacer"></span>
     <button class="btn primary" id="spawnBtn">+ Spawn</button>
     <button class="btn icon ghost" id="helpBtn" title="About Menagerie" aria-label="About Menagerie">?</button>
+    <button class="btn icon ghost" id="keybarBtn" title="Terminal keys (Esc, Ctrl, arrows…)" aria-label="Toggle terminal key bar">⌨</button>
     <button class="btn icon ghost" id="themeBtn" title="Toggle light / dark" aria-label="Toggle light or dark theme">☾</button>
     <button class="btn icon ghost" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
   </div>
@@ -250,6 +270,37 @@
   </div>
   <!-- Mobile drawer scrim — tap to close the off-canvas sidebar. -->
   <div id="drawerScrim"></div>
+
+  <!-- Soft-key accessory bar — writes raw byte sequences to the focused session's PTY. -->
+  <div id="keybar" role="toolbar" aria-label="Terminal keys">
+    <button class="kb" data-seq="esc" aria-label="Escape">Esc</button>
+    <button class="kb mod" data-mod="ctrl" aria-label="Control (sticky)">Ctrl</button>
+    <button class="kb mod" data-mod="alt" aria-label="Alt (sticky)">Alt</button>
+    <button class="kb" data-seq="tab" aria-label="Tab">Tab</button>
+    <span class="sep"></span>
+    <button class="kb" data-seq="up" aria-label="Up">↑</button>
+    <button class="kb" data-seq="down" aria-label="Down">↓</button>
+    <button class="kb" data-seq="left" aria-label="Left">←</button>
+    <button class="kb" data-seq="right" aria-label="Right">→</button>
+    <span class="sep"></span>
+    <button class="kb" data-seq="c-c" aria-label="Ctrl C">^C</button>
+    <button class="kb" data-seq="c-d" aria-label="Ctrl D">^D</button>
+    <button class="kb" data-seq="c-r" aria-label="Ctrl R">^R</button>
+    <button class="kb" data-seq="c-l" aria-label="Ctrl L">^L</button>
+    <button class="kb" data-seq="c-z" aria-label="Ctrl Z">^Z</button>
+    <button class="kb" data-seq="c-a" aria-label="Ctrl A">^A</button>
+    <button class="kb" data-seq="c-e" aria-label="Ctrl E">^E</button>
+    <button class="kb" data-seq="c-u" aria-label="Ctrl U">^U</button>
+    <button class="kb" data-seq="c-k" aria-label="Ctrl K">^K</button>
+    <button class="kb" data-seq="c-w" aria-label="Ctrl W">^W</button>
+    <span class="sep"></span>
+    <button class="kb" data-lit="|">|</button>
+    <button class="kb" data-lit="~">~</button>
+    <button class="kb" data-lit="/">/</button>
+    <button class="kb" data-lit="-">-</button>
+    <button class="kb" data-lit="_">_</button>
+    <button class="kb" id="kbPaste" aria-label="Paste from clipboard">Paste</button>
+  </div>
 
   <!-- Help / About (z-index above the workspace overlay so it shows first on a new visit) -->
   <div class="scrim" id="helpScrim" data-close style="z-index:110">
@@ -705,6 +756,7 @@
       const s = sessions.get(tile.dataset.sid); if (s && s.term) s.term.focus();
       tile.scrollIntoView({ block: "nearest" });
       syncSidebarActive();
+      updateKeybar();
     }
     function focusTileByIndex(i) { const t = tilesInOrder()[i]; if (t) focusTileEl(t); }
     function cycleFocus(dir) { const ts = tilesInOrder(); if (!ts.length) return; let i = ts.findIndex((t) => t.classList.contains("focused")); i = (i < 0 ? 0 : (i + dir + ts.length) % ts.length); focusTileEl(ts[i]); }
@@ -973,7 +1025,7 @@
     }
     // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
-    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); }
+    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); }
 
     // ===== workspace overlay + modals =================================
     function openWorkspaceOverlay(mode, handle) {
@@ -1028,6 +1080,65 @@
     }
     $("sidebarToggle").addEventListener("click", toggleSidebar);
     $("drawerScrim").addEventListener("click", closeDrawer);
+
+    // ===== soft-key accessory bar (TUI input on a phone) ==============
+    const KEY_SEQ = { esc: "\x1b", tab: "\t", enter: "\r", bs: "\x7f",
+      up: "\x1b[A", down: "\x1b[B", left: "\x1b[D", right: "\x1b[C",
+      "c-c": "\x03", "c-d": "\x04", "c-r": "\x12", "c-l": "\x0c", "c-z": "\x1a",
+      "c-a": "\x01", "c-e": "\x05", "c-u": "\x15", "c-k": "\x0b", "c-w": "\x17" };
+    let _mod = null;                       // sticky Ctrl/Alt — one-shot, cleared after the next key
+    let _keybarOn = isMobile();            // on by default on phones; ⌨ toggles it anywhere
+    // The bar targets the focused live session (or the first live one if none is focused).
+    function activeSession() {
+      const f = document.querySelector(".tile.focused");
+      if (f) { const s = sessions.get(f.dataset.sid); if (s && !s.replay && s.status !== "exited") return s; }
+      for (const s of sessions.values()) if (!s.replay && s.status !== "exited") return s;
+      return null;
+    }
+    function keySend(seq) { const s = activeSession(); if (!s) return; sendInput(s, seq); if (s.term) s.term.focus(); }
+    function ctrlCode(ch) { const c = ch.toLowerCase().charCodeAt(0); if (c >= 97 && c <= 122) return String.fromCharCode(c - 96); if (ch === " ") return "\x00"; return null; }
+    function renderMods() { document.querySelectorAll("#keybar .mod").forEach((b) => b.classList.toggle("armed", b.dataset.mod === _mod)); }
+    function clearMod() { _mod = null; renderMods(); }
+    function toggleMod(m) { _mod = _mod === m ? null : m; renderMods(); const s = activeSession(); if (s && s.term) s.term.focus(); }
+    function updateKeybar() { const show = _keybarOn && !!activeSession(); $("keybar").classList.toggle("on", show); document.body.classList.toggle("has-keybar", show); if (show) positionKeybar(); else clearMod(); }
+    // Ride just above the soft keyboard (iOS keeps the layout viewport full-height, so we lift by the overlap).
+    function positionKeybar() { const vv = window.visualViewport; if (!vv) return; const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); $("keybar").style.bottom = overlap + "px"; }
+    async function pasteToSession() {
+      const s = activeSession(); if (!s) return;
+      try { const t = await navigator.clipboard.readText(); if (t) { sendInput(s, t); if (s.term) s.term.focus(); } }
+      catch { /* clipboard blocked by the browser — stay silent, never a native dialog */ }
+    }
+    // pointerdown-preventDefault keeps focus in the terminal, so tapping a key doesn't drop the soft keyboard.
+    $("keybar").addEventListener("pointerdown", (e) => { if (e.target.closest(".kb")) e.preventDefault(); });
+    $("keybar").addEventListener("click", (e) => {
+      const b = e.target.closest(".kb"); if (!b) return;
+      if (b.id === "kbPaste") { pasteToSession(); return; }
+      if (b.dataset.mod) { toggleMod(b.dataset.mod); return; }
+      const seq = b.dataset.seq ? KEY_SEQ[b.dataset.seq] : (b.dataset.lit || "");
+      if (seq) keySend(seq);
+    });
+    $("keybarBtn").addEventListener("click", () => { _keybarOn = !_keybarOn; updateKeybar(); if (_keybarOn) { const s = activeSession(); if (s && s.term) s.term.focus(); } });
+    // Sticky Ctrl/Alt + next letter. Capture phase runs before xterm reads the key, so we
+    // swallow it and inject the combo. keydown covers hardware keyboards; beforeinput covers
+    // soft keyboards that fire keyCode 229 with no usable `key`. Scoped to a focused terminal.
+    function armedTarget() { const ae = document.activeElement; return !!(ae && ae.classList && ae.classList.contains("xterm-helper-textarea")); }
+    document.addEventListener("keydown", (e) => {
+      if (!_mod || !armedTarget()) return;
+      if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const s = activeSession(); if (!s) { clearMod(); return; }
+        const seq = _mod === "ctrl" ? ctrlCode(e.key) : "\x1b" + e.key;
+        if (seq != null) { sendInput(s, seq); clearMod(); e.preventDefault(); e.stopImmediatePropagation(); }
+      }
+    }, true);
+    document.addEventListener("beforeinput", (e) => {
+      if (!_mod || !armedTarget()) return;
+      if (e.inputType === "insertText" && e.data && e.data.length === 1) {
+        const s = activeSession(); if (!s) { clearMod(); return; }
+        const seq = _mod === "ctrl" ? ctrlCode(e.data) : "\x1b" + e.data;
+        if (seq != null) { sendInput(s, seq); clearMod(); e.preventDefault(); }
+      }
+    }, true);
+    if (window.visualViewport) { window.visualViewport.addEventListener("resize", positionKeybar); window.visualViewport.addEventListener("scroll", positionKeybar); }
     $("spawnRelay").addEventListener("change", renderAgentOptions);
     $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
     $("addRelayBtn").addEventListener("click", () => {
@@ -1045,7 +1156,7 @@
     });
     $("wsSkipBtn").addEventListener("click", () => { FS.handle = null; FS.label = "in-memory"; $("workspace").textContent = "in-memory (not saved)"; $("wsName").textContent = "in-memory (not saved)"; closeWorkspaceOverlay(); ensureLocalhostRelay(); renderAll(); });
     document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeAllModals(); }));
-    let _fitT; window.addEventListener("resize", () => { clearTimeout(_fitT); _fitT = setTimeout(() => { for (const s of sessions.values()) if (s.status !== "exited") fitTile(s); }, 150); });
+    let _fitT; window.addEventListener("resize", () => { clearTimeout(_fitT); _fitT = setTimeout(() => { for (const s of sessions.values()) if (s.status !== "exited") fitTile(s); updateKeybar(); positionKeybar(); }, 150); });
 
     // Hotkeys (handoff §10): n spawn · g+digit focus tile · f fullscreen · Tab cycle · Esc close/restore.
     let _gPending = false, _gTimer;
