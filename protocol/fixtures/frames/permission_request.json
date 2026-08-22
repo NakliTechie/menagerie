@@ -4,16 +4,36 @@
   "request_id": "pr-9f2c41ab",
   "seq": 18,
   "acp": {
-    "sessionId": "01a02a50-b2c0-77aa-8023-b6d82d9c28ff",
-    "toolCall": {
-      "toolCallId": "tc-771",
-      "title": "Edit src/review.py",
-      "kind": "edit",
-      "content": [{ "type": "diff", "path": "src/review.py", "oldText": "def run():\n", "newText": "def run(verbose=True):\n" }]
-    },
-    "options": [
-      { "optionId": "allow-once", "name": "Allow once", "kind": "allow_once" },
-      { "optionId": "reject-once", "name": "Reject", "kind": "reject_once" }
-    ]
+    "jsonrpc": "2.0",
+    "id": 9001,
+    "method": "session/request_permission",
+    "params": {
+      "sessionId": "01a02a50-b2c0-77aa-8023-b6d82d9c28ff",
+      "toolCall": {
+        "toolCallId": "tc-771",
+        "title": "Edit src/review.py",
+        "kind": "edit",
+        "content": [
+          {
+            "type": "diff",
+            "path": "src/review.py",
+            "oldText": "def run():\n",
+            "newText": "def run(verbose=True):\n"
+          }
+        ]
+      },
+      "options": [
+        {
+          "optionId": "allow-once",
+          "name": "Allow once",
+          "kind": "allow_once"
+        },
+        {
+          "optionId": "reject-once",
+          "name": "Reject",
+          "kind": "reject_once"
+        }
+      ]
+    }
   }
 }

@@ -10,7 +10,7 @@ recorded here and the build continues against reality.
 |---|---|
 | C0 reconcile + pin | **complete** (2026-08-22) |
 | C1 protocol 1.2 | **complete** (2026-08-22) |
-| C2 relay acp kind | in progress |
+| C2 relay acp kind | **complete** (2026-08-22) |
 | C3 structured tiles | not started (gated on §7 UX reference) |
 | C4 drill-in + diffs | not started (gated on §7 UX reference) |
 | C5 structured replay | not started |
@@ -82,6 +82,23 @@ recorded here and the build continues against reality.
 - Go module deps unchanged from v1.0 set (coder/websocket, BurntSushi/toml, creack/pty)
   — verified against go.mod during C0.
 
+### C2 evidence
+
+- `relay-go/internal/acp`: stdio JSON-RPC child (one process/session, owner read
+  goroutine, mutex'd writer), initialize+session/new handshake, prompt/cancel,
+  permission correlation (`pr-N` ↔ ACP rpc id, outcome→option-kind resolution).
+- Event log: every frame both directions appended to
+  `~/.menagerie/sessions/<id>.acp.jsonl` BEFORE interpretation.
+- Bounded outbox (384) per structured session; drops counted + `frames_dropped`
+  error-frame marker; re-attach replays a 256-frame tail through the same queue.
+- Config: agents gain `transports` / `acp_args` (TOML); default config ships an
+  `omp` entry — configuration only, no code path branches on the name.
+- Tests: 5 unit tests against a fake agent binary
+  (`internal/server/testdata/fakeagent`) — hello transports, spawn→stream→prompt
+  →idle, permission round trip, cancel-then-kill, transport guards. Integration
+  test vs real `omp acp` behind `-tags acpintegration` — **passes** (3.7s round
+  trip). Unit runs never require omp.
+
 ## Decisions log (this build)
 
 - **D1 — protocol bumps to 1.2, not 1.1.** 1.1 was consumed by the re-attach release
@@ -101,3 +118,10 @@ recorded here and the build continues against reality.
 - **D6 — prompt turn lifecycle maps onto existing events.** Prompt completion →
   `event{idle}`; permission pending → `needs_input`; process death → `exited`. No new
   event vocabulary (divergence #5); `errored` surfaces via `error` frames.
+- **D7 — the `acp` field carries the FULL JSON-RPC envelope verbatim** (request or
+  notification, incl. `jsonrpc`/`method`/`id`), not just params — "wraps one ACP
+  message" taken literally; matches protocol.md examples and fixtures.
+- **D8 — all structured-session lifecycle events ride the bounded outbox** (not the
+  direct PTY-style send) so an event can never overtake the frames that caused it.
+- **D9 — ACP children never get tmux-wrapped** (divergence #3 operationalized): a PTY
+  line discipline mangles JSON-RPC framing; tmux mode applies to `pty` spawns only.
