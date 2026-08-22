@@ -1,0 +1,7 @@
+{
+  "type": "permission_response",
+  "session_id": "b2c3d4e5f6a7b8c9",
+  "session_token": "st_example_32bytes_base64url",
+  "request_id": "pr-9f2c41ab",
+  "outcome": "approve"
+}

@@ -1,30 +1,39 @@
 /**
  * Menagerie relay protocol — canonical message type definitions.
  *
- *   protocol-v1.0
+ *   protocol-v1.2
  *
  * Single source of truth for message shapes. The browser app consumes these
  * types directly; the Go relay hand-ports them into `internal/protocol/`.
  * `protocol.md` is the human-readable reference and MUST stay in sync — if the
  * two disagree, this file wins.
  *
- * Transport: WebSocket. JSON text frames only in v1.0 (no binary frames; PTY
- * bytes travel base64-encoded inside `output.data`). One WebSocket connection
- * per browser↔relay pair; multiple sessions multiplex over it via `session_id`.
+ * Transport: WebSocket. JSON text frames only; PTY bytes travel base64-encoded
+ * inside `output.data`. One WebSocket connection per browser↔relay pair;
+ * multiple sessions multiplex over it via `session_id`.
+ *
+ * v1.2 adds structured sessions (`transport: "acp"`): ACP payloads ride nested
+ * inside Menagerie frames (`session_update`, `permission_request`,
+ * `permission_response`, `prompt`) and are never flattened — the ACP pin stays
+ * swappable without a protocol major. See `acp-pin.md` + `acp-types.ts`.
  */
 
-export const PROTOCOL_VERSION = "1.1" as const;
+export const PROTOCOL_VERSION = "1.2" as const;
 
 // ---- Shared scalar types --------------------------------------------------
 
-/** GOOS-style OS identifier a relay reports. Windows is not shipped in v1.0. */
+/** GOOS-style OS identifier a relay reports. Windows is not shipped. */
 export type HostOS = "darwin" | "linux";
 
 /** GOARCH-style architecture a relay reports. */
 export type HostArch = "amd64" | "arm64";
 
-/** Stream transport kinds. v1.0 ships "pty" only. */
-export type Transport = "pty";
+/**
+ * Stream transport kinds. `"pty"` streams raw terminal bytes (v1.0);
+ * `"acp"` is a structured session whose child speaks the pinned Agent Client
+ * Protocol over stdio (v1.2). Unknown transports are ignored by clients.
+ */
+export type Transport = "pty" | "acp";
 
 /** Control signals the browser can send to a session. */
 export type SignalKind = "kill" | "interrupt" | "resize";
@@ -63,14 +72,19 @@ export interface BaseMessage {
 /** Sent by the relay immediately on connect, before anything else. */
 export interface HelloMessage extends BaseMessage {
   type: "hello";
-  protocol_version: string; // e.g. "1.0"
-  relay_version: string; // e.g. "0.1.0"
+  protocol_version: string; // e.g. "1.2"
+  relay_version: string; // e.g. "0.5.0"
   relay_name: string; // human label, e.g. "m4pro-home"
   host_os: HostOS;
   host_arch: HostArch;
   agents: string[]; // agent ids this relay can spawn (display alphabetically)
-  transports: Transport[]; // ["pty"] in v1.0
-  hosts_children: boolean; // false in v1.0 (supervisor trees are v1.1)
+  transports: Transport[]; // ["pty"] pre-1.2 relays; ["pty","acp"] with structured support
+  hosts_children: boolean; // false through protocol 1.2 (supervisor trees deferred)
+  /**
+   * Per-agent spawn forms: agent id → transports it may be spawned under.
+   * Absent (pre-1.2 relays) ⇒ every listed `agents` entry spawns as `"pty"`.
+   */
+  agent_transports?: Record<string, Transport[]>;
 }
 
 /**
@@ -166,6 +180,8 @@ export interface SpawnMessage extends BaseMessage {
   args: string[]; // passed to the shim; the shim decides how to format them
   env: Record<string, string>;
   client_id: string; // client-generated UUID, echoed back in `spawned`
+  /** Absent ⇒ "pty", so stored pre-1.2 session definitions keep working. */
+  transport?: Transport;
 }
 
 /** Send input (keystrokes) to a session's PTY. */
@@ -206,6 +222,55 @@ export interface AttachMessage extends BaseMessage {
   session_id: string;
 }
 
+// ---- Structured sessions (protocol 1.2) ------------------------------------
+//
+// A `transport:"acp"` session streams Menagerie frames whose ACP payloads ride
+// NESTED and uninterpreted — the transport layer forwards, the render layer
+// reads. ACP shapes live in `acp-types.ts`, generated from `acp-pin.md`; no
+// frame here flattens them, so the pin can move without another protocol bump.
+
+/** Relay → browser: wraps ONE ACP agent→client notification, verbatim. */
+export interface SessionUpdateMessage extends BaseMessage {
+  type: "session_update";
+  session_id: string;
+  seq: number; // monotonic per structured session; independent of output.seq
+  acp: unknown; // one ACP agent→client message (e.g. a session/update notification)
+}
+
+/** Relay → browser: the agent asks to proceed. Review happens on drill-in. */
+export interface PermissionRequestMessage extends BaseMessage {
+  type: "permission_request";
+  session_id: string;
+  request_id: string; // relay-correlated id; echo it in permission_response
+  seq: number;
+  acp: unknown; // nested ACP permission request (options, tool call, diffs)
+}
+
+/** Browser → relay: answer to a permission_request. */
+export interface PermissionResponseMessage extends BaseMessage {
+  type: "permission_response";
+  session_id: string;
+  session_token: string;
+  request_id: string; // echoes permission_request.request_id
+  outcome: PermissionOutcome;
+  /** Explicit ACP option id when the UI picks precisely; otherwise the relay maps `outcome`. */
+  option_id?: string;
+}
+
+/** Approve-always is SESSION-scoped only — never persisted across sessions (v1.2). */
+export type PermissionOutcome = "approve" | "reject" | "approve_always";
+
+/**
+ * Browser → relay: prompt a structured session. The structured analogue of
+ * v1.0's `input`; `input` stays PTY-only and must not be overloaded.
+ */
+export interface PromptMessage extends BaseMessage {
+  type: "prompt";
+  session_id: string;
+  session_token: string;
+  text: string; // relay maps to ACP content blocks
+}
+
 // ===========================================================================
 // Either direction
 // ===========================================================================
@@ -228,6 +293,8 @@ export type RelayToBrowserMessage =
   | OutputMessage
   | EventMessage
   | ResumeFailedMessage
+  | SessionUpdateMessage
+  | PermissionRequestMessage
   | ErrorMessage;
 
 export type BrowserToRelayMessage =
@@ -237,6 +304,8 @@ export type BrowserToRelayMessage =
   | InputMessage
   | SignalMessage
   | ResumeMessage
+  | PromptMessage
+  | PermissionResponseMessage
   | ErrorMessage;
 
 export type Message = RelayToBrowserMessage | BrowserToRelayMessage;

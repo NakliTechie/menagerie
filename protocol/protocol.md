@@ -1,6 +1,10 @@
 # Menagerie relay protocol
 
-> **protocol-v1.1** · **Lifecycle:** locked (2026-05-28). v1.1 adds live re-attach (`sessions` / `attach` / `attached`); all v1.0 messages are unchanged.
+> **protocol-v1.2** · **Lifecycle:** locked (2026-05-28); extended 2026-08-22.
+> v1.1 added live re-attach (`sessions` / `attach` / `attached`). v1.2 adds
+> **structured sessions** (`transport: "acp"`) with nested ACP payloads
+> (`session_update` / `permission_request` / `permission_response` / `prompt`);
+> all earlier messages are unchanged.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 
@@ -66,6 +70,10 @@ Two token kinds, no JWT/PKI/expiry-claims. Tokens are opaque random strings (32 
 | `sessions` | relay → browser | Live session list, sent after `registered` (1.1) |
 | `attach` | browser → relay | Re-attach a registered client to a live session (1.1) |
 | `attached` | relay → browser | Re-attach ack + fresh `session_token` (1.1) |
+| `session_update` | relay → browser | One ACP notification for a structured session, nested verbatim (1.2) |
+| `permission_request` | relay → browser | ACP agent asks to proceed; carries request id + nested action (1.2) |
+| `permission_response` | browser → relay | Approve / reject / approve-always (session-scoped) (1.2) |
+| `prompt` | browser → relay | Prompt a structured session; structured analogue of `input` (1.2) |
 | `error` | either | Typed error with `code` + human-readable `message` |
 
 ## 5. Messages
@@ -75,17 +83,20 @@ Sent immediately on connect.
 ```json
 {
   "type": "hello",
-  "protocol_version": "1.0",
-  "relay_version": "0.1.0",
+  "protocol_version": "1.2",
+  "relay_version": "0.5.0",
   "relay_name": "m4pro-home",
   "host_os": "darwin",
   "host_arch": "arm64",
-  "agents": ["claude-code", "custom", "mini"],
-  "transports": ["pty"],
-  "hosts_children": false
+  "agents": ["claude-code", "custom", "mini", "omp"],
+  "transports": ["pty", "acp"],
+  "hosts_children": false,
+  "agent_transports": { "omp": ["acp"], "mini": ["pty"], "claude-code": ["pty"], "custom": ["pty"] }
 }
 ```
-`host_os` ∈ {`darwin`, `linux`}; `host_arch` ∈ {`amd64`, `arm64`}; `transports` is `["pty"]` in v1.0; `hosts_children` is `false` in v1.0 (supervisor trees are v1.1). `agents` may arrive in any order — clients display alphabetically.
+`host_os` ∈ {`darwin`, `linux`}; `host_arch` ∈ {`amd64`, `arm64`}; `hosts_children` is `false` through protocol 1.2 (supervisor trees deferred). `agents` may arrive in any order — clients display alphabetically.
+
+**Transports (protocol 1.2).** `transports` lists what the relay can stream. A pre-1.2 browser ignores unknown transports and keeps offering PTY agents; a 1.2 browser talking to a pre-1.2 relay sees no `"acp"` in `transports` (or no `agent_transports` at all) and degrades to PTY-only with no error wall. `agent_transports` maps agent id → spawn forms; when absent, every listed agent spawns as `"pty"`.
 
 ### `register` (browser → relay)
 ```json
@@ -106,10 +117,11 @@ Relay replies `registered` on success, or `error{code:"auth_failed"}` then close
   "cwd": "/Users/chirag/code/sieve",
   "args": ["--task", "fix the failing test in test_review.py"],
   "env": {},
-  "client_id": "5f1c…-uuid"
+  "client_id": "5f1c…-uuid",
+  "transport": "acp"
 }
 ```
-`agent` must be one of `hello.agents`. `args` is handed to the shim, which decides how to format it. `client_id` is a browser-generated UUID echoed back in `spawned` so the client can correlate the response with its pending request.
+`agent` must be one of `hello.agents`. `args` is handed to the shim, which decides how to format it. `client_id` is a browser-generated UUID echoed back in `spawned` so the client can correlate the response with its pending request. **`transport` (protocol 1.2)** selects the session kind: absent ⇒ `"pty"` (stored pre-1.2 session definitions keep working); `"acp"` starts a structured session whose child speaks the pinned ACP over stdio. A relay that cannot honor the requested transport replies `error{code:"unsupported_transport"}` rather than silently downgrading.
 
 ### `spawned` (relay → browser)
 ```json
@@ -179,6 +191,38 @@ A client reconnect (e.g. a browser refresh) drops the WebSocket, but the relay's
 ```
 If the session is gone (relay restarted), the relay replies `resume_failed` and the client falls back to FSA replay.
 
+### Structured sessions (protocol 1.2)
+
+A session spawned with `transport:"acp"` streams **Menagerie frames whose ACP
+payloads ride nested and uninterpreted**. The relay bridges JSON-RPC over the
+agent's stdio; it never flattens ACP shapes into Menagerie fields, so the ACP pin
+(see [`acp-pin.md`](./acp-pin.md)) can move without another protocol bump. ACP
+message shapes are generated into [`acp-types.ts`](./acp-types.ts).
+
+**`session_update`** (relay → browser) — wraps ONE ACP agent→client message verbatim:
+```json
+{ "type": "session_update", "session_id": "…", "seq": 17, "acp": { "jsonrpc": "2.0", "method": "session/update", "params": { … } } }
+```
+`seq` is monotonic per structured session, independent of PTY `output.seq`; clients order by it and the relay may use it to mark backpressure drops.
+
+**`permission_request`** (relay → browser) — the agent asked to proceed (an ACP `session/request_permission`):
+```json
+{ "type": "permission_request", "session_id": "…", "request_id": "pr-9f2…", "seq": 18, "acp": { … options, tool call, diffs … } }
+```
+`request_id` is relay-correlated. While one is pending, the session's status pill reads *needs-input*; reviewing happens on drill-in.
+
+**`permission_response`** (browser → relay):
+```json
+{ "type": "permission_response", "session_id": "…", "session_token": "…", "request_id": "pr-9f2…", "outcome": "approve" }
+```
+`outcome` ∈ `approve` | `reject` | `approve_always`. The relay maps an outcome onto the ACP option kinds when `option_id` is absent; a present `option_id` wins. **Approve-always is session-scoped only in protocol 1.2 — never persisted across sessions.** A persisted blanket grant to an agent that can write files needs its own design pass first.
+
+**`prompt`** (browser → relay) — the structured analogue of v1.0's `input`; **`input` stays PTY-only**:
+```json
+{ "type": "prompt", "session_id": "…", "session_token": "…", "text": "fix the failing test in test_review.py" }
+```
+The relay maps `text` to ACP content blocks. Prompt completion surfaces as `event{idle}`; a pending permission request reads as `needs_input`; agent death as `exited`. Cancellation uses ACP's cancel via `signal{interrupt}`; `kill` remains the hard stop.
+
 ### `error` (either direction)
 ```json
 { "type": "error", "session_id": "…", "code": "invalid_token", "message": "…" }
@@ -198,13 +242,17 @@ If the session is gone (relay restarted), the relay replies `resume_failed` and 
 | `auth_failed` | Registration token rejected. Relay closes the connection. |
 | `unknown_agent` | `spawn.agent` is not in `hello.agents`. |
 | `spawn_failed` | Relay could not start the agent (bad `cwd`, exec error, …). |
-| `invalid_token` | `input`/`signal`/`resume` carried a missing or wrong `session_token`. Frame dropped. |
+| `invalid_token` | `input`/`signal`/`resume`/`prompt`/`permission_response` carried a missing or wrong `session_token`. Frame dropped. |
+| `unsupported_transport` | (1.2) `spawn.transport` names a transport this relay cannot honor. |
+| `unknown_request` | (1.2) `permission_response.request_id` matches no pending permission request. |
 
 The set is **open-ended** — clients MUST tolerate unknown codes and surface `message` to the user.
 
 ## 8. Versioning & compatibility
 
-- Protocol versions are semantic: `protocol-v<major>.<minor>`. This is `1.1` — v1.1 added `sessions` / `attach` / `attached` (additive; same major, so v1.0 clients still interoperate for spawn/stream/kill).
+- Protocol versions are semantic: `protocol-v<major>.<minor>`. This is `1.2`.
+  - **1.1** added `sessions` / `attach` / `attached` (additive; same major).
+  - **1.2** added structured sessions: `hello.agent_transports`, `spawn.transport`, and the `session_update` / `permission_request` / `permission_response` / `prompt` frames (additive; ACP payloads nested, never flattened).
 - The browser reads `hello.protocol_version`. On mismatch it shows a user-visible warning and attempts the connection anyway (best-effort).
 - Adding a new optional field or a new `error` code is a **minor** bump. Removing/renaming a field or message type, or changing a field's meaning, is a **major** bump.
 

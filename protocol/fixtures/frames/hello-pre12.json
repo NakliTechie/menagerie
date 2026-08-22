@@ -1,0 +1,11 @@
+{
+  "type": "hello",
+  "protocol_version": "1.0",
+  "relay_version": "0.2.0",
+  "relay_name": "old-box",
+  "host_os": "linux",
+  "host_arch": "amd64",
+  "agents": ["mini", "custom"],
+  "transports": ["pty"],
+  "hosts_children": false
+}

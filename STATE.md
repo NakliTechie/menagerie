@@ -9,8 +9,8 @@ recorded here and the build continues against reality.
 | Chunk | Status |
 |---|---|
 | C0 reconcile + pin | **complete** (2026-08-22) |
-| C1 protocol 1.2 | in progress |
-| C2 relay acp kind | not started |
+| C1 protocol 1.2 | **complete** (2026-08-22) |
+| C2 relay acp kind | in progress |
 | C3 structured tiles | not started (gated on §7 UX reference) |
 | C4 drill-in + diffs | not started (gated on §7 UX reference) |
 | C5 structured replay | not started |
@@ -67,6 +67,13 @@ recorded here and the build continues against reality.
    header comment still reads "protocol-v1.0" while the constant is `"1.1"`;
    `protocol.md`'s `hello` example still shows `"protocol_version": "1.0"`;
    `hosts_children` comment says "supervisor trees are v1.1" — they are now v1.2.
+   → Fixed in C1.
+
+7. **No protocol fixture set existed** despite C1's checkpoint referencing "the v1.0
+   fixture set". Created fresh under `protocol/fixtures/frames/`: baseline v1.0/v1.1
+   frames + one fixture per new 1.2 frame, validated by
+   [`protocol/validate-fixtures.mjs`](protocol/validate-fixtures.mjs) (20 fixtures,
+   19/19 types covered).
 
 ## Environment facts (C0)
 
