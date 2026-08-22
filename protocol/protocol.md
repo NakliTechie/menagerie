@@ -203,7 +203,7 @@ message shapes are generated into [`acp-types.ts`](./acp-types.ts).
 ```json
 { "type": "session_update", "session_id": "…", "seq": 17, "acp": { "jsonrpc": "2.0", "method": "session/update", "params": { … } } }
 ```
-`seq` is monotonic per structured session, independent of PTY `output.seq`; clients order by it and the relay may use it to mark backpressure drops.
+`seq` is monotonic per structured session, independent of PTY `output.seq`; clients order by it and the relay may use it to mark backpressure drops. Frames replayed on re-attach carry **`seq: -1`** (the same convention as PTY `output`): render them, but never persist them — the event log already holds them under their original sequence.
 
 **`permission_request`** (relay → browser) — the agent asked to proceed (an ACP `session/request_permission`):
 ```json

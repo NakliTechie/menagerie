@@ -6,3 +6,4 @@ plan/
 /menagerie-relay
 relay-go/menagerie-relay
 .aider*
+.playwright-mcp/

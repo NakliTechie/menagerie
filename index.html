@@ -196,6 +196,80 @@
     .setup-title .st { font-weight: 400; font-size: 12px; color: var(--faint); margin-left: 6px; }
     .setup-title .st.ok { color: var(--green); }
 
+    /* ================= v1.1 structured sessions ================= *
+     * An instrument panel: dense, legible at a glance, never hiding what the
+     * agent did. Same tile chrome as PTY tiles; only the glass swaps. */
+    .tile-stream { flex: 1; min-height: 0; background: var(--panel); overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+    .st-row { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+    .st-row .g { flex: 0 0 auto; color: var(--faint); font-family: var(--mono); font-size: 11px; }
+    .st-row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+    .st-row.tool .t { color: var(--muted); }
+    .st-row.tool.done .t { color: var(--faint); }
+    .st-row.msg { align-items: flex-start; }
+    .st-row.msg .t { white-space: normal; color: var(--text); max-height: 6.2em; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent); mask-image: linear-gradient(180deg, #000 55%, transparent); }
+    .st-row.thought .t { color: var(--faint); font-style: italic; }
+    .st-row.unknown .t { font-family: var(--mono); font-size: 11px; opacity: .75; }
+    .st-row .ok { color: var(--green); } .st-row .err { color: var(--red); } .st-row .run { color: var(--yellow); }
+    .st-permstrip { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 9px; border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--accent); font-size: 12px; cursor: pointer; background: transparent; width: 100%; text-align: left; }
+    .st-permstrip:hover { background: var(--btn-hover); }
+    .st-drop { margin-top: 6px; padding: 4px 9px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--yellow) 14%, transparent); color: var(--yellow); font-size: 11.5px; }
+    .tile-stream .empty-soft { color: var(--faint); font-size: 12px; animation: pulse 1.6s ease-in-out infinite; }
+
+    /* ---- drill-in surface: replaces the grid, returns to it ---- */
+    .main { position: relative; }
+    #drill { display: none; position: absolute; inset: 6px 18px 14px; z-index: 5; background: var(--bg); flex-direction: column; gap: 10px; }
+    #drill.open { display: flex; }
+    body.drilling .grid, body.drilling #emptyState { display: none !important; }
+    .drill-head { display: flex; align-items: center; gap: 10px; }
+    .drill-title { font-weight: 600; font-size: 14px; }
+    .drill-title .sub { color: var(--faint); font-weight: 400; font-size: 12px; }
+    .instrbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 12px; font-size: 12px; color: var(--muted); }
+    .instrbar .gauge { position: relative; flex: 0 0 120px; height: 6px; border-radius: 3px; background: var(--elev); overflow: hidden; }
+    .instrbar .gauge i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 3px; }
+    .drill-cols { display: grid; grid-template-columns: 200px 1fr; gap: 10px; flex: 1; min-height: 0; }
+    @media (max-width: 900px) { .drill-cols { grid-template-columns: 1fr; } .drill-rail { display: none; } }
+    .drill-rail { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px; overflow-y: auto; }
+    .drill-rail .sb-title { margin: 6px 6px 4px; }
+    .drill-main { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .transcript { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .tr-row { font-size: 13px; line-height: 1.55; }
+    .tr-row.user .who, .tr-row.msg .who { font-weight: 600; margin-right: 6px; }
+    .tr-row .who { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+    .tr-row.thought { color: var(--muted); border-left: 2px solid var(--border); padding-left: 9px; }
+    .tr-row.thought .body { color: var(--faint); }
+    .tr-row.tool { font-size: 12.5px; }
+    .tr-row.tool summary { cursor: pointer; color: var(--muted); list-style: none; display: flex; gap: 8px; align-items: baseline; }
+    .tr-row.tool summary::before { content: "▸"; color: var(--faint); }
+    .tr-row.tool[open] summary::before { content: "▾"; }
+    .tr-row.tool .detail { margin: 6px 0 0 18px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; max-height: 240px; overflow: auto; }
+    .composer textarea { width: 100%; min-height: 64px; resize: vertical; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px; outline: none; font-family: inherit; font-size: 13px; }
+    .composer textarea:focus { border-color: var(--accent); }
+    .composer.flash textarea { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+    .perm-banner { border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 9px 11px; font-size: 12.5px; color: var(--text); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+
+    /* ---- diffs ---- */
+    .diffcard { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    .diffcard header { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--panel-2); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 12px; }
+    .diffcard header .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .diffcard[data-state="approved"] header .state { color: var(--green); }
+    .diffcard[data-state="rejected"] header .state { color: var(--red); }
+    .hunk { font-family: var(--mono); font-size: 11.5px; line-height: 1.45; overflow-x: auto; }
+    .hunk .hl { padding: 0 9px; white-space: pre; }
+    .hunk .add { background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--text); }
+    .hunk .del { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--text); }
+    .hunk h4 { margin: 0; padding: 3px 9px; font-size: 10.5px; font-weight: 550; color: var(--faint); background: var(--panel-2); display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); }
+    .hunk h4 .hbtns { margin-left: auto; display: none; gap: 6px; }
+    .diffcard[data-state="pending"] .hunk h4 .hbtns { display: inline-flex; }
+    .hbtn { font-size: 10.5px; border: 1px solid var(--border); background: var(--elev); color: var(--text); border-radius: 4px; padding: 1px 7px; }
+    .hbtn.yes:hover { border-color: var(--green); color: var(--green); }
+    .hbtn.no:hover { border-color: var(--red); color: var(--red); }
+    .hunk.h-approved h4 { color: var(--green); } .hunk.h-rejected h4 { color: var(--red); }
+    .cmdline { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 6px; padding: 6px 9px; margin: 6px 10px 9px; white-space: pre-wrap; word-break: break-word; }
+
+    /* ---- raw event-log pane ---- */
+    .rawlog { flex: 0 0 220px; overflow-y: auto; background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; display: none; }
+    .rawlog.on { display: block; }
+
     /* ================= Mobile (≤760px) — "continue on your phone" ================= *
      * Sidebar becomes an off-canvas drawer (the session switcher); tiles go single-column
      * and near-full-height so one agent reads clearly; footer pills get out of the way.  */
@@ -267,8 +341,34 @@
     <main class="main">
       <div class="empty" id="emptyState"></div>
       <div class="grid" id="grid"></div>
+      <!-- Drill-in surface: replaces the grid, returns to it (grid DOM stays put). -->
+      <div id="drill">
+        <div class="drill-head">
+          <button class="btn icon ghost" id="drillBack" title="Back to grid (Esc)" aria-label="Back to grid">←</button>
+          <span class="drill-title" id="drillTitle"></span>
+          <span class="spacer"></span>
+          <button class="btn icon ghost" id="rawlogBtn" title="Raw event log (d)" aria-label="Toggle raw event log">{}</button>
+        </div>
+        <div class="instrbar" id="instrumentBar"></div>
+        <div class="drill-cols">
+          <aside class="drill-rail">
+            <div class="sb-title">Sessions</div>
+            <div id="drillRailSessions"></div>
+          </aside>
+          <div class="drill-main">
+            <div class="transcript" id="transcript"></div>
+            <div id="permZone" style="display:flex;flex-direction:column;gap:10px;max-height:42%;overflow-y:auto"></div>
+            <div class="perm-banner" id="drillPermBanner" style="display:none"></div>
+            <div class="composer">
+              <textarea id="drillComposer" placeholder="prompt… (Enter to send · Shift+Enter newline)"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="rawlog" id="rawlog"></div>
+      </div>
     </main>
   </div>
+
   <!-- Mobile drawer scrim — tap to close the off-canvas sidebar. -->
   <div id="drawerScrim"></div>
 
@@ -373,6 +473,10 @@
           <input id="spawnCwd" placeholder="/Users/you/code/project" autocomplete="off" spellcheck="false" /></div>
         <div class="field"><label for="spawnTask">Task</label>
           <textarea id="spawnTask" placeholder="what should the agent do?"></textarea></div>
+        <div class="field" id="spawnAcpRow" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)">
+            <input type="checkbox" id="spawnAcp" checked style="width:auto" /> structured session (ACP) — streamed messages, tool calls, in-browser diff review
+          </label></div>
         <div class="row"><button class="btn primary" id="doSpawnBtn">Spawn</button></div>
         <div class="inline-error" id="spawnResult"></div>
       </div>
@@ -401,7 +505,7 @@
     // ---- Menagerie app (P4) --------------------------------------------
     // FSA-backed persistence (relays.json + session meta + PTY streams) + replay.
     // Live reconnect-resume is deferred; on reload the browser replays from FSA.
-    const PROTOCOL_VERSION = "1.1";
+    const PROTOCOL_VERSION = "1.2";
     const DEFAULT_LOCAL_URL = "ws://127.0.0.1:7878";
     // Terminal colors follow the active app theme (read from the CSS vars set per theme).
     function termTheme() {
@@ -417,8 +521,17 @@
     const relays = [];
     const sessions = new Map();
     const pendingCwd = new Map(); // client_id → cwd, to label the session in its `spawned` reply
+    const pendingTransport = new Map(); // client_id → "pty"|"acp", same correlation
     let rehydrating = false;
     const $ = (id) => document.getElementById(id);
+
+    // Which spawn forms a relay offers for an agent (protocol 1.2). Pre-1.2 relays
+    // send no agent_transports ⇒ everything is PTY.
+    function transportsFor(relay, agent) {
+      const at = relay.hello && relay.hello.agent_transports;
+      return (at && at[agent]) || ["pty"];
+    }
+    function supportsACP(relay, agent) { return transportsFor(relay, agent).includes("acp"); }
 
     // ===== FSA storage layer ==========================================
     const FS = {
@@ -562,10 +675,12 @@
         case "spawned": {
           closeModal("spawnScrim");
           const sess = { id: msg.session_id, relayId: relay.id, relayName: relay.name, agent: msg.agent, token: msg.session_token,
+            transport: pendingTransport.get(msg.client_id) || "pty",
             status: "running", startedAt: Date.now(), cwd: pendingCwd.get(msg.client_id) || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
-          pendingCwd.delete(msg.client_id);
+          pendingCwd.delete(msg.client_id); pendingTransport.delete(msg.client_id);
+          initAcpState(sess);
           sessions.set(sess.id, sess);
-          if (window.Terminal) createTile(sess); else showSpawnResult("xterm.js failed to load", false);
+          if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess); else showSpawnResult("xterm.js failed to load", false);
           writeSessionMeta(sess);
           break;
         }
@@ -584,9 +699,11 @@
               continue; // already live
             }
             const sess = { id: info.session_id, relayId: relay.id, relayName: relay.name, agent: info.agent, token: null,
+              transport: supportsACP(relay, info.agent) ? "acp" : "pty",
               status: "running", startedAt: Date.parse(info.started_at) || Date.now(), cwd: "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
+            initAcpState(sess);
             sessions.set(sess.id, sess);
-            if (window.Terminal) createTile(sess);
+            if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
             send(relay, { type: "attach", session_id: info.session_id });
           }
           break;
@@ -621,14 +738,404 @@
           else if (msg.event === "idle") setSessionStatus(s, "idle");
           break;
         }
+        case "session_update": {
+          const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") break;
+          ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
+          // seq -1 = replayed-on-attach history; already on disk — never re-persist.
+          if (FS.ok() && msg.seq >= 0 && msg.seq > (s.acp.persistedSeq || 0)) { s.acp.persistedSeq = msg.seq; persistAcpLine(s, { dir: "a>c", at: new Date().toISOString(), frame: msg.acp }); }
+          renderStreamTile(s);
+          break;
+        }
+        case "permission_request": {
+          const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") break;
+          // Ingest even at seq -1: a replayed request restores live decision state.
+          ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
+          if (FS.ok() && msg.seq >= 0 && msg.seq > (s.acp.persistedSeq || 0)) { s.acp.persistedSeq = msg.seq; persistAcpLine(s, { dir: "a>c", at: new Date().toISOString(), frame: msg.acp }); }
+          const params = (msg.acp && msg.acp.params) || {};
+          s.acp.pendingPerm = { request_id: msg.request_id, toolCall: params.toolCall || null, options: params.options || [] };
+          if (s.status !== "needs_input") beep();
+          setSessionStatus(s, "needs_input");
+          renderStreamTile(s);
+          if ($("drill").classList.contains("open") && drillSid === s.id) renderDrill(s);
+          break;
+        }
         case "error":
           if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} }
+          else if (msg.code === "frames_dropped") {
+            const s = sessions.get(msg.session_id);
+            if (s && s.transport === "acp") { s.acp.dropped = (s.acp.dropped || 0) + 1; renderStreamTile(s); }
+            else showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
+          }
           else showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
           break;
         case "resume_failed": break;
       }
       renderAll();
     }
+
+    // ===== structured sessions (protocol 1.2) =========================
+    // One render path, two sources: live frames and the persisted event log both
+    // feed ingestAcpFrame(); everything downstream renders from sess.acp.items.
+    function initAcpState(s) {
+      if (s.transport !== "acp") return;
+      s.acp = { items: [], tools: new Map(), order: [], pendingPerm: null, dropped: 0, rawLog: [], persistedSeq: 0, usage: null, mode: null };
+    }
+    const TOOL_GLYPH = { read: "▤", edit: "✎", delete: "✂", move: "⇄", search: "⌕", execute: "$", bash: "$", fetch: "↭", think: "✳", other: "•" };
+    function toolGlyph(kind) { return TOOL_GLYPH[(kind || "").toLowerCase()] || "•"; }
+    function toolMark(status) { return status === "completed" ? '<span class="ok">✓</span>' : status === "failed" || status === "rejected" ? '<span class="err">✗</span>' : '<span class="run">↺</span>'; }
+
+    function ingestAcpFrame(s, rec) {
+      const A = s.acp; if (!A) return;
+      A.rawLog.push(rec);
+      const f = rec.frame; if (!f) return;
+      if (f.method === "session/update") {
+        const u = (f.params && f.params.update) || {};
+        switch (u.sessionUpdate) {
+          case "agent_message_chunk": appendMsg(s, "agent", blockText(u.content)); break;
+          case "user_message_chunk": appendMsg(s, "user", blockText(u.content)); break;
+          case "agent_thought_chunk": {
+            const last = A.items[A.items.length - 1];
+            if (last && last.kind === "thought") last.text += blockText(u.content);
+            else A.items.push({ kind: "thought", text: blockText(u.content) });
+            break;
+          }
+          case "tool_call":
+          case "tool_call_update": upsertTool(s, u); break;
+          case "current_mode_update": A.mode = (u.current_mode && (u.current_mode.name || u.current_mode.id)) || A.mode; break;
+          case "usage_update": A.usage = u; break;
+          default:
+            A.items.push({ kind: "unknown", label: u.sessionUpdate || "update", json: JSON.stringify(u).slice(0, 400) });
+        }
+      } else if (f.method === "session/request_permission") {
+        // Decision state lives on permission_request frames; nothing extra here.
+      } else {
+        A.items.push({ kind: "unknown", label: f.method || "response", json: JSON.stringify(f.result !== undefined ? f.result : f).slice(0, 400) });
+      }
+    }
+    function blockText(b) {
+      if (!b) return "";
+      if (Array.isArray(b)) return b.map(blockText).join("");
+      if (b.type === "text") return b.text || "";
+      return b.type === "image" ? "[image]" : b.type === "audio" ? "[audio]" : `[${b.type}]`;
+    }
+    function appendMsg(s, role, text) {
+      const A = s.acp; if (!text) return;
+      const last = A.items[A.items.length - 1];
+      if (last && last.kind === "msg" && last.role === role) last.text += text;
+      else A.items.push({ kind: "msg", role, text });
+    }
+    function upsertTool(s, u) {
+      const A = s.acp;
+      let t = A.tools.get(u.toolCallId);
+      if (!t) { t = { kind: "tool", id: u.toolCallId, title: u.title || u.toolCallId, toolKind: u.kind, status: u.status || "pending", raw: [] }; A.tools.set(u.toolCallId, t); A.order.push(u.toolCallId); A.items.push(t); }
+      if (u.title) t.title = u.title;
+      if (u.kind) t.toolKind = u.kind;
+      if (u.status) t.status = u.status;
+      if (Array.isArray(u.content)) t.raw = u.content;
+      t.diffs = (t.raw || []).filter((c) => c.type === "diff").map((c) => ({ path: c.path, oldText: c.oldText || "", newText: c.newText || "" }));
+      t.commands = (t.raw || []).filter((c) => c.type !== "diff").map((c) => c.summary || c.command || JSON.stringify(c).slice(0, 200));
+    }
+
+    // ---- tile-scale view (C3): last activity only; everything else on drill-in ----
+    function renderStreamTile(s) {
+      if (!s.streamEl || !s.acp) return;
+      const A = s.acp;
+      s.streamEl.innerHTML = "";
+      if (!A.items.length && !A.pendingPerm) {
+        const w = document.createElement("div"); w.className = "empty-soft"; w.textContent = "waiting for the agent's first frame…";
+        s.streamEl.appendChild(w); return;
+      }
+      const visible = A.items.slice(-7);
+      for (const it of visible) {
+        const row = document.createElement("div");
+        if (it.kind === "tool") {
+          row.className = "st-row tool" + (it.status === "completed" ? " done" : "");
+          row.innerHTML = `<span class="g">${toolGlyph(it.toolKind)}</span><span class="t"></span>${it.status === "pending" ? toolMark(it.status) : toolMark(it.status)}`;
+          row.querySelector(".t").textContent = `${it.title}`;
+        } else if (it.kind === "msg") {
+          row.className = "st-row msg"; row.innerHTML = `<span class="g">${it.role === "user" ? "❯" : "◆"}</span><span class="t"></span>`;
+          row.querySelector(".t").textContent = it.text;
+        } else if (it.kind === "thought") {
+          row.className = "st-row thought"; row.innerHTML = `<span class="g">✳</span><span class="t"></span>`;
+          row.querySelector(".t").textContent = "thinking…";
+        } else {
+          row.className = "st-row unknown"; row.innerHTML = `<span class="g">${escapeHtml(it.label)}</span><span class="t"></span>`;
+          row.querySelector(".t").textContent = it.json;
+        }
+        s.streamEl.appendChild(row);
+      }
+      if (A.dropped > 0) {
+        const d = document.createElement("div"); d.className = "st-drop";
+        d.textContent = `⚠ ${A.dropped} update${A.dropped === 1 ? "" : "s"} dropped (slow connection)`;
+        s.streamEl.appendChild(d);
+      }
+      if (A.pendingPerm) {
+        const p = A.pendingPerm;
+        const btn = document.createElement("button"); btn.className = "st-permstrip";
+        const what = (p.toolCall && (p.toolCall.title || p.toolCall.toolCallId)) || "action";
+        btn.innerHTML = `<span>▮ permission requested — ${escapeHtml(what)}</span><span style="margin-left:auto">review →</span>`;
+        btn.addEventListener("click", () => openDrill(s));
+        s.streamEl.appendChild(btn);
+      }
+      s.streamEl.scrollTop = s.streamEl.scrollHeight;
+    }
+
+    // ---- drill-in (C4) ----
+    let drillSid = null;
+    function drillOpen() { return $("drill").classList.contains("open"); }
+    function openDrill(s) {
+      drillSid = s.id; document.body.classList.add("drilling");
+      $("drill").classList.add("open"); syncSidebarActive();
+      renderDrill(s);
+    }
+    function closeDrill() {
+      drillSid = null; document.body.classList.remove("drilling");
+      $("drill").classList.remove("open"); $("rawlog").classList.remove("on");
+    }
+    function composerHasText() { const ta = $("drillComposer"); return ta && ta.value.length > 0; }
+    function flashComposer() { const c = $("drill").querySelector(".composer"); c.classList.add("flash"); setTimeout(() => c.classList.remove("flash"), 450); }
+
+    function renderDrill(s) {
+      if (!s.acp) return;
+      const A = s.acp;
+      $("drillTitle").innerHTML = `${escapeHtml(s.agent)} <span class="sub">· ${escapeHtml(s.relayName)}${s.cwd ? " · " + escapeHtml(s.cwd) : ""}</span>`;
+      const inst = $("instrumentBar");
+      inst.innerHTML = "";
+      const bits = [];
+      if (A.usage && A.usage.totalTokens != null) bits.push(`<span>tokens <strong>${A.usage.totalTokens}</strong>${A.usage.inputTokens != null ? ` (in ${A.usage.inputTokens} · out ${A.usage.outputTokens ?? "?"})` : ""}</span>`);
+      if (A.mode) bits.push(`<span>mode <strong>${escapeHtml(String(A.mode))}</strong></span>`);
+      bits.push(`<span>status <strong>${escapeHtml(s.status)}</strong></span>`);
+      inst.innerHTML = bits.join("");
+      // transcript
+      const tr = $("transcript"); tr.innerHTML = "";
+      for (const it of A.items) tr.appendChild(renderTranscriptRow(it));
+      tr.scrollTop = tr.scrollHeight;
+      // permission banner + diffs
+      const pv = $("permZone"); pv.innerHTML = "";
+      if (A.pendingPerm) {
+        const card = buildDiffCard(s, A.pendingPerm, "pending");
+        pv.appendChild(card);
+      } else {
+        for (const id of [...A.tools.keys()].reverse()) {
+          const t = A.tools.get(id);
+          if ((t.diffs || []).length && (t.status === "completed" || t.status === "failed")) {
+            const card = buildDiffCard(s, { toolCall: { title: t.title, content: (t.diffs || []).map((d) => ({ type: "diff", ...d })) }, _done: t.status }, t.status === "completed" ? "approved" : "rejected");
+            pv.appendChild(card);
+          }
+        }
+      }
+      // rail
+      const rail = $("drillRailSessions"); rail.innerHTML = "";
+      for (const o of sessions.values()) {
+        if (o.replay) continue;
+        const row = document.createElement("div"); row.className = "sb-row" + (o.id === s.id ? " active" : "");
+        const dot = document.createElement("span"); dot.className = "dot-status s-" + o.status;
+        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = o.agent;
+        const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = o.relayName || "";
+        row.append(dot, nm, mt);
+        row.addEventListener("click", () => { openDrill(o); });
+        rail.appendChild(row);
+      }
+      // raw log
+      renderRawLog(s);
+      // pending-permission hint in composer area
+      const banner = $("drillPermBanner");
+      if (A.pendingPerm) { banner.style.display = ""; banner.textContent = `permission requested — ${(A.pendingPerm.toolCall && A.pendingPerm.toolCall.title) || "action"} · decide above`; }
+      else banner.style.display = "none";
+    }
+
+    function renderTranscriptRow(it) {
+      const row = document.createElement("div");
+      if (it.kind === "msg") {
+        row.className = "tr-row " + (it.role === "user" ? "user" : "msg");
+        const who = document.createElement("span"); who.className = "who"; who.textContent = it.role === "user" ? "you" : "agent";
+        const body = document.createElement("span"); body.className = "body"; body.textContent = it.text;
+        row.append(who, body);
+      } else if (it.kind === "thought") {
+        row.className = "tr-row thought";
+        const d = document.createElement("details");
+        const sum = document.createElement("summary"); sum.textContent = "thought";
+        const body = document.createElement("div"); body.className = "body"; body.textContent = it.text;
+        d.append(sum, body); row.appendChild(d);
+      } else if (it.kind === "tool") {
+        row.className = "tr-row tool";
+        const d = document.createElement("details");
+        const sum = document.createElement("summary");
+        sum.innerHTML = `<span class="g">${toolGlyph(it.toolKind)}</span> <span></span> ${toolMark(it.status)}`;
+        sum.querySelector("span").textContent = it.title;
+        const detail = document.createElement("div"); detail.className = "detail";
+        detail.textContent = [...(it.commands || []), ...(it.diffs || []).map((x) => `diff: ${x.path}`)].join("\n") || "(no detail)";
+        d.append(sum, detail); row.appendChild(d);
+      } else {
+        row.className = "tr-row unknown st-row";
+        row.innerHTML = `<span class="g">${escapeHtml(it.label)}</span><span class="t"></span>`;
+        row.querySelector(".t").textContent = it.json;
+      }
+      return row;
+    }
+
+    // Line diff with 3 lines of context, computed honestly from given texts.
+    function computeHunks(oldText, newText, ctx = 3) {
+      const a = (oldText || "").split("\n"), b = (newText || "").split("\n");
+      let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
+      let sa = a.length - 1, sb = b.length - 1;
+      while (sa >= p && sb >= p && a[sa] === b[sb]) { sa--; sb--; }
+      const del = a.slice(p, sa + 1), add = b.slice(p, sb + 1);
+      if (!del.length && !add.length) return [];
+      const start = Math.max(0, p - ctx);
+      const hunks = [{ head: `@@ -${p + 1} +${p + 1} @@`, lines: [] }];
+      for (let i = start; i < p; i++) hunks[0].lines.push({ t: " ", x: a[i] });
+      for (const l of del) hunks[0].lines.push({ t: "-", x: l });
+      for (const l of add) hunks[0].lines.push({ t: "+", x: l });
+      const endCtx = Math.min(a.length - 1, sa + ctx);
+      for (let i = sa + 1; i <= endCtx; i++) hunks[0].lines.push({ t: " ", x: a[i] });
+      return hunks;
+    }
+    function buildDiffCard(s, perm, state) {
+      const tc = perm.toolCall || {};
+      const card = document.createElement("div"); card.className = "diffcard"; card.dataset.state = state;
+      const head = document.createElement("header");
+      const diffs = (tc.content || []).filter((c) => c.type === "diff");
+      const others = (tc.content || []).filter((c) => c.type !== "diff");
+      const pathEl = document.createElement("span"); pathEl.className = "path";
+      pathEl.textContent = diffs.length ? diffs.map((d) => d.path).join(", ") : (tc.title || "proposed action");
+      const stateEl = document.createElement("span"); stateEl.className = "state";
+      stateEl.textContent = state === "pending" ? "⚑ pending" : state === "approved" ? "✓ approved" : "✕ rejected";
+      head.append(pathEl, stateEl);
+      card.appendChild(head);
+
+      const mkHunk = (hunk, idx) => {
+        const h = document.createElement("div"); h.className = "hunk";
+        const hh = document.createElement("h4");
+        hh.appendChild(document.createTextNode(hunk.head));
+        if (state === "pending") {
+          const btns = document.createElement("span"); btns.className = "hbtns";
+          const yes = document.createElement("button"); yes.className = "hbtn yes"; yes.textContent = "✓";
+          const no = document.createElement("button"); no.className = "hbtn no"; no.textContent = "✕";
+          yes.addEventListener("click", () => { h.classList.add("h-approved"); });
+          no.addEventListener("click", () => { h.classList.add("h-rejected"); });
+          btns.append(yes, no); hh.appendChild(btns);
+        }
+        h.appendChild(hh);
+        for (const l of hunk.lines) {
+          const el = document.createElement("div"); el.className = "hl " + (l.t === "+" ? "add" : l.t === "-" ? "del" : "");
+          el.textContent = l.t === " " ? "  " + l.x : l.t + " " + l.x;
+          h.appendChild(el);
+        }
+        return h;
+      };
+
+      if (diffs.length) {
+        for (const d of diffs) for (const hk of computeHunks(d.oldText, d.newText)) card.appendChild(mkHunk(hk));
+      } else {
+        // Where ACP gives only a command/tool call, render THE COMMAND — never fabricate a diff.
+        const cmd = document.createElement("div"); cmd.className = "cmdline";
+        cmd.textContent = (others.map((o) => o.summary || o.command).filter(Boolean).join(" && ")) || tc.title || JSON.stringify(tc).slice(0, 300);
+        card.appendChild(cmd);
+      }
+
+      if (state === "pending" && perm.request_id) {
+        const actions = document.createElement("div"); actions.style.cssText = "display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--border)";
+        const ok = document.createElement("button"); ok.className = "btn primary"; ok.textContent = "Approve";
+        const no = document.createElement("button"); no.className = "btn"; no.textContent = "Reject";
+        ok.addEventListener("click", () => decidePermission(s, perm, "approve"));
+        no.addEventListener("click", () => decidePermission(s, perm, "reject"));
+        actions.append(ok, no); card.appendChild(actions);
+      }
+      return card;
+    }
+    function decidePermission(s, perm, outcome) {
+      const opts = perm.options || [];
+      let option_id = "";
+      const want = outcome === "reject" ? "reject" : "allow";
+      const exact = outcome === "approve" ? opts.find((o) => o.kind === "allow_once") : opts.find((o) => (o.kind || "").startsWith("reject"));
+      const fallback = opts.find((o) => (o.kind || "").startsWith(want)) || opts[0];
+      const chosen = exact || fallback;
+      if (chosen) option_id = chosen.optionId;
+      const relay = relays.find((r) => r.id === s.relayId);
+      if (!relay || !s.token) return;
+      send(relay, { type: "permission_response", session_id: s.id, session_token: s.token, request_id: perm.request_id, outcome, option_id });
+      s.acp.pendingPerm = null;
+      setSessionStatus(s, "running");
+      renderStreamTile(s);
+      if (drillSid === s.id) renderDrill(s);
+    }
+
+    function renderRawLog(s) {
+      const el = $("rawlog");
+      if (!el.classList.contains("on")) return;
+      el.textContent = s.acp.rawLog.map((r) => JSON.stringify(r)).join("\n");
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // ---- prompts (the structured analogue of input) ----
+    function sendPrompt(s, text) {
+      const relay = relays.find((r) => r.id === s.relayId);
+      if (!relay || s.status === "exited" || !s.token) return;
+      send(relay, { type: "prompt", session_id: s.id, session_token: s.token, text });
+    }
+
+    // ---- structured persistence + replay (C5) ----
+    const enc = new TextEncoder();
+    async function persistAcpLine(s, obj) {
+      if (!FS.ok()) return;
+      try { await FS.appendBytes([MENAGERIE_DIR, SESSIONS_DIR, s.id + ".acp.jsonl"], enc.encode(JSON.stringify(obj) + "\n")); }
+      catch (e) { console.warn("acp log flush failed", e); }
+    }
+    function serializeStream(s) { return JSON.stringify(s.acp ? s.acp.items : []); }
+
+    async function openStructuredReplay(meta) {
+      closeDrawer();
+      const f = await FS.readFile([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".acp.jsonl"]);
+      if (!f) { alert("No event log captured for this session."); return; }
+      const lines = (await f.text()).split("\n").filter((l) => l.trim());
+      const r = { id: "replay-" + meta.id, agent: meta.agent, relayName: meta.relay_name || "", replay: true, transport: "acp", status: "replay", startedAt: Date.parse(meta.started_at) || Date.now(), cols: 0, rows: 0 };
+      initAcpState(r);
+      sessions.set(r.id, r);
+      createStreamReplayTile(r, lines.length);
+      const playFrames = (upto) => {
+        const end = Math.min(upto, lines.length);
+        for (let i = r._ingested || 0; i < end; i++) { try { ingestAcpFrame(r, JSON.parse(lines[i])); } catch {} }
+        r._ingested = end;
+        r._pos = end;
+        renderStreamTile(r); renderRawLog(r);
+        const lbl = r.tile.querySelector(".pos"); if (lbl) lbl.textContent = Math.round((end / Math.max(1, lines.length)) * 100) + "%";
+      };
+      r._playFrom = playFrames;
+      r._lines = lines;
+    }
+    function createStreamReplayTile(r, totalLines) {
+      const tile = document.createElement("div"); tile.className = "tile"; tile.dataset.sid = r.id;
+      const head = document.createElement("div"); head.className = "tile-head";
+      const dot = document.createElement("span"); dot.className = "dot-status s-replay";
+      const title = document.createElement("span"); title.className = "tile-title";
+      title.innerHTML = `${escapeHtml(r.agent)} <span class="sub">· ${escapeHtml(r.relayName)} · replay</span>`;
+      const spacer = document.createElement("span"); spacer.className = "spacer";
+      const close = document.createElement("button"); close.className = "btn icon ghost"; close.title = "Close"; close.textContent = "✕";
+      close.addEventListener("click", () => { destroyTile(r); updateEmpty(); });
+      head.append(dot, title, spacer, close);
+      makeDraggable(tile, head);
+      const streamEl = document.createElement("div"); streamEl.className = "tile-stream";
+      const ctrls = document.createElement("div"); ctrls.className = "replay-controls";
+      const playBtn = document.createElement("button"); playBtn.className = "btn icon ghost"; playBtn.textContent = "▶"; playBtn.setAttribute("aria-label", "Play replay");
+      const posLbl = document.createElement("span"); posLbl.className = "pos"; posLbl.textContent = "0%";
+      ctrls.append(playBtn, posLbl);
+      tile.append(head, streamEl, ctrls); $("grid").appendChild(tile);
+      Object.assign(r, { tile, streamEl, _pos: 0 });
+      r._playing = false;
+      playBtn.addEventListener("click", () => {
+        if (r._playing) { clearInterval(r.tick); r._playing = false; playBtn.textContent = "▶"; return; }
+        if (r._pos >= totalLines) { r.acp = null; initAcpState(r); r._pos = 0; r._ingested = 0; }
+        r._playing = true; playBtn.textContent = "⏸";
+        const step = Math.max(1, Math.ceil(totalLines / 60));
+        r.tick = setInterval(() => {
+          if (r._pos >= totalLines) { clearInterval(r.tick); r._playing = false; playBtn.textContent = "▶"; return; }
+          r._playFrom(r._pos + step, false);
+        }, 40);
+      });
+      updateEmpty();
+    }
+
 
     // ===== session persistence ========================================
     async function writeSessionMeta(sess) {
@@ -638,6 +1145,7 @@
         started_at: new Date(sess.startedAt).toISOString(),
         ended_at: sess.endedAt ? new Date(sess.endedAt).toISOString() : null,
         exit_code: (sess.exitCode === undefined ? null : sess.exitCode),
+        capture: (sess.transport === "acp" ? "acp-jsonl" : "pty-bytes"),
       }); } catch (e) { console.warn("write meta failed", e); }
     }
     async function flushSession(sess) {
@@ -694,13 +1202,17 @@
     }
 
     // ===== sessions / tiles ===========================================
-    function spawn(relayId, agent, cwd, task, customCmd) {
+    function spawn(relayId, agent, cwd, task, customCmd, transport) {
       const relay = relays.find((r) => r.id === relayId);
       if (!relay || relay.status !== "connected") { showSpawnResult("relay not connected", false); return; }
       const client_id = crypto.randomUUID(); pendingCwd.set(client_id, cwd);
-      const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (task ? [task] : []);
-      send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id });
-      showSpawnResult("spawning…", true);
+      const tr = transport || (supportsACP(relay, agent) ? "acp" : "pty");
+      pendingTransport.set(client_id, tr);
+      // PTY shims take the initial task as argv; structured sessions get theirs
+      // through the first `prompt` instead.
+      const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (tr === "pty" && task ? [task] : []);
+      send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr });
+      showSpawnResult(tr === "acp" ? "spawning structured session…" : "spawning…", true);
     }
 
     function createTile(sess) {
@@ -812,9 +1324,42 @@
       if (cols !== sess.cols || rows !== sess.rows) { try { sess.term.resize(cols, rows); } catch {} sess.cols = cols; sess.rows = rows; if (sess.status !== "exited" && !sess.replay) signal(sess, "resize", cols, rows); }
     }
 
+    // ===== structured tile (C3): same chrome, different glass =========
+    function createStreamTile(sess) {
+      const tile = document.createElement("div"); tile.className = "tile"; tile.dataset.sid = sess.id;
+      const head = document.createElement("div"); head.className = "tile-head";
+      const dot = document.createElement("span"); dot.className = "dot-status s-running"; dot.setAttribute("aria-label", "running");
+      const title = document.createElement("span"); title.className = "tile-title";
+      title.innerHTML = `${escapeHtml(sess.agent)} <span class="sub">· ${escapeHtml(sess.relayName)} · <span class="timer">00:00</span></span>`;
+      const spacer = document.createElement("span"); spacer.className = "spacer";
+      const drill = document.createElement("button"); drill.className = "btn icon ghost"; drill.title = "Open (transcript · diffs · log)"; drill.textContent = "⤢";
+      drill.addEventListener("click", (e) => { e.stopPropagation(); openDrill(sess); });
+      const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen"; full.textContent = "⛶";
+      full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
+      const kill = document.createElement("button"); kill.className = "btn icon ghost"; kill.title = "Kill"; kill.textContent = "🗑";
+      kill.addEventListener("click", () => signal(sess, "kill"));
+      head.append(dot, title, spacer, drill, full, kill);
+      head.addEventListener("click", (e) => { if (![kill, full, drill].includes(e.target)) openDrill(sess); });
+      head.addEventListener("dblclick", (e) => { if (![kill, drill].includes(e.target)) toggleFullscreen(tile); });
+      makeDraggable(tile, head);
+      const streamEl = document.createElement("div"); streamEl.className = "tile-stream";
+      const bar = document.createElement("div"); bar.className = "tile-input";
+      const ti = document.createElement("input"); ti.placeholder = "prompt… (Enter to send)";
+      ti.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendPrompt(sess, ti.value); ti.value = ""; } });
+      const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
+      sendBtn.addEventListener("click", () => { sendPrompt(sess, ti.value); ti.value = ""; ti.focus(); });
+      bar.append(ti, sendBtn);
+      tile.append(head, streamEl, bar); $("grid").appendChild(tile);
+      Object.assign(sess, { tile, streamEl, dot, ti, sendBtn });
+      sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
+      updateEmpty(); focusTile(sess); ti.focus();
+      renderStreamTile(sess);
+    }
+
     // ===== replay =====================================================
     async function openReplay(meta) {
       closeDrawer();
+      if (meta.capture === "acp-jsonl") return openStructuredReplay(meta); // dispatch on the recorded format, never a guess
       const bytes = await FS.readBytes([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".pty"]);
       if (!bytes) { alert("No trajectory captured for this session."); return; }
       const r = { id: "replay-" + meta.id, agent: meta.agent, relayName: meta.relay_name || "", replay: true, status: "replay", bytes, pos: 0, playing: false, speed: 1, cols: 0, rows: 0 };
@@ -1024,8 +1569,14 @@
       const agentSel = $("spawnAgent"); agentSel.innerHTML = "";
       const r = relays.find((x) => x.id === $("spawnRelay").value);
       const agents = (r && r.hello && r.hello.agents) ? r.hello.agents : [];
-      for (const a of agents) { const o = document.createElement("option"); o.value = a; o.textContent = a; agentSel.appendChild(o); }
+      for (const a of agents) {
+        const o = document.createElement("option"); o.value = a;
+        o.textContent = a + (supportsACP(r, a) ? "  · acp" : "");
+        agentSel.appendChild(o);
+      }
       $("customCmdField").style.display = agentSel.value === "custom" ? "" : "none";
+      $("spawnAcpRow").style.display = r && supportsACP(r, agentSel.value) ? "" : "none";
+      if (r) $("spawnAcp").checked = supportsACP(r, agentSel.value); // default to the richer transport when offered
     }
     // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
@@ -1151,7 +1702,7 @@
       if (!token) { err.textContent = "Registration token is required."; return; }
       addRelay(url, token); $("relayUrl").value = ""; $("relayToken").value = "";
     });
-    $("doSpawnBtn").addEventListener("click", () => spawn($("spawnRelay").value, $("spawnAgent").value, $("spawnCwd").value.trim(), $("spawnTask").value.trim(), $("spawnCustomCmd").value.trim()));
+    $("doSpawnBtn").addEventListener("click", () => spawn($("spawnRelay").value, $("spawnAgent").value, $("spawnCwd").value.trim(), $("spawnTask").value.trim(), $("spawnCustomCmd").value.trim(), $("spawnAcpRow").style.display !== "none" && !$("spawnAcp").checked ? "pty" : undefined));
     $("changeFolderBtn").addEventListener("click", () => pickWorkspace());
     $("wsPickBtn").addEventListener("click", async () => {
       const ov = $("wsOverlay");
@@ -1165,13 +1716,39 @@
     // Hotkeys (handoff §10): n spawn · g+digit focus tile · f fullscreen · Tab cycle · Esc close/restore.
     let _gPending = false, _gTimer;
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { if (document.querySelector(".tile.fullscreen")) { exitFullscreen(); return; } closeAllModals(); return; }
+      if (e.key === "Escape") {
+        if (drillOpen()) {
+          // Esc returns to the grid ONLY when no composer text is pending —
+          // losing a half-written prompt is the bug that gets reported first.
+          if (composerHasText()) { flashComposer(); return; }
+          closeDrill(); return;
+        }
+        if (document.querySelector(".tile.fullscreen")) { exitFullscreen(); return; }
+        closeAllModals(); return;
+      }
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || anyModalOpen()) return;
       if (_gPending) { _gPending = false; clearTimeout(_gTimer); if (/^[1-9]$/.test(e.key)) { focusTileByIndex(parseInt(e.key, 10) - 1); e.preventDefault(); return; } }
       if (e.key === "n") { openModal("spawnScrim"); e.preventDefault(); }
       else if (e.key === "g") { _gPending = true; _gTimer = setTimeout(() => { _gPending = false; }, 1200); }
       else if (e.key === "f") { toggleFullscreen(document.querySelector(".tile.focused") || tilesInOrder()[0]); e.preventDefault(); }
       else if (e.key === "Tab") { cycleFocus(e.shiftKey ? -1 : 1); e.preventDefault(); }
+      else if (drillOpen() && (e.key === "d" || e.key === "D")) { $("rawlogBtn").click(); e.preventDefault(); }
+      else if (e.key === "Enter") {
+        const f = document.querySelector(".tile.focused");
+        const s = f && sessions.get(f.dataset.sid);
+        if (s && s.transport === "acp") { openDrill(s); e.preventDefault(); }
+      }
+    });
+
+    // Drill-in wiring.
+    $("drillBack").addEventListener("click", closeDrill);
+    $("rawlogBtn").addEventListener("click", () => { const el = $("rawlog"); el.classList.toggle("on"); const s = sessions.get(drillSid); if (s) renderRawLog(s); });
+    $("drillComposer").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        const s = sessions.get(drillSid);
+        if (s && e.target.value.trim()) { sendPrompt(s, e.target.value.trim()); e.target.value = ""; }
+      }
     });
 
     window.__menagerie = { relays, sessions, addRelay, FS,
@@ -1184,6 +1761,39 @@
                 sessions.set(sess.id, sess); if (window.Terminal) createTile(sess);
                 if (sess.term) sess.term.write("\x1b[1;32m❯\x1b[0m claude-code · fleet demo\r\n\r\nEditing src/app.ts …\r\n\x1b[33m? Apply this change? (y/n)\x1b[0m ");
                 return sess.id;
+              },
+              // Offline structured tile fed canned frames — tile + drill-in layout testing without a relay.
+              fakeAcpSession() {
+                const sess = { id: "fakeacp-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent: "omp", transport: "acp",
+                  status: "running", startedAt: Date.now(), token: null, cwd: "~/code/sieve", cols: 0, rows: 0, pending: [], flushing: false };
+                initAcpState(sess);
+                ingestAcpFrame(sess, { dir: "a>c", seq: 1, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "The failing test is test_review.py::test_parse — off by one in the loop bound." } } } } });
+                ingestAcpFrame(sess, { dir: "a>c", seq: 2, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "tool_call", toolCallId: "t1", title: "Bash · pytest -x", kind: "execute", status: "completed", content: [{ type: "terminal", summary: "$ pytest -x test_review.py" }] } } } });
+                ingestAcpFrame(sess, { dir: "a>c", seq: 3, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "tool_call", toolCallId: "t2", title: "Edit src/review.py", kind: "edit", status: "completed", content: [{ type: "diff", path: "src/review.py", oldText: "def run():\n    for i in range(len(items)):\n        check(i)\n", newText: "def run(verbose=True):\n    for i in range(len(items) - 1):\n        check(i, verbose)\n" }] } } } });
+                ingestAcpFrame(sess, { dir: "a>c", seq: 4, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Fixed the off-by-one in run(): the loop now stops one short of len(items), matching the invariant the test asserts." } } } } });
+                sess.acp.pendingPerm = { request_id: "pr-9f2c41ab", options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }, { optionId: "reject-once", name: "Reject", kind: "reject_once" }],
+                  toolCall: { toolCallId: "t3", title: "Edit main.py", kind: "edit", content: [{ type: "diff", path: "main.py", oldText: "x = 1\ny = 2\nz = x + y\nprint(z)\n", newText: "x = 1\ny = 2\nz = x * y\nprint(f\"{z}\")\n" }] } };
+                setSessionStatus(sess, "needs_input");
+                sessions.set(sess.id, sess); createStreamTile(sess);
+                return sess.id;
+              },
+              serializeStream(id) { const s = sessions.get(id); return s ? serializeStream(s) : null; },
+              openDrillById(id) { const s = sessions.get(id); if (s && s.transport === "acp") openDrill(s); },
+              // C5 assertion helper: replay a persisted acp-jsonl log through the live render path
+              // and return the resulting stream serialization (compare against the live capture).
+              async replaySerialize(metaId) {
+                const f = await FS.readFile([MENAGERIE_DIR, SESSIONS_DIR, metaId + ".acp.jsonl"]);
+                if (!f) return null;
+                const lines = (await f.text()).split("\n").filter((l) => l.trim());
+                const r = { id: "ser-" + metaId, agent: "x", transport: "acp", status: "replay" };
+                initAcpState(r);
+                for (const l of lines) { try { const o = JSON.parse(l); if (o.dir === "a>c") ingestAcpFrame(r, o); } catch {} }
+                return serializeStream(r);
+              },
+              async writeAcpLogDirect(id, frames) { // test seam: seed a log file without a relay
+                if (!FS.ok()) return false;
+                for (const fr of frames) await persistAcpLine({ id, acp: { persistedSeq: 0 } }, { dir: "a>c", at: new Date().toISOString(), frame: fr });
+                return true;
               } } };
 
     initTheme();

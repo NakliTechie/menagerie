@@ -11,10 +11,47 @@ recorded here and the build continues against reality.
 | C0 reconcile + pin | **complete** (2026-08-22) |
 | C1 protocol 1.2 | **complete** (2026-08-22) |
 | C2 relay acp kind | **complete** (2026-08-22) |
-| C3 structured tiles | not started (gated on §7 UX reference) |
-| C4 drill-in + diffs | not started (gated on §7 UX reference) |
-| C5 structured replay | not started |
-| C6 close-out | not started |
+| §7 UX reference gate | **complete** ([docs/design/v1.1-ux-reference.md](docs/design/v1.1-ux-reference.md)) |
+| C3 structured tiles | **complete** — verified in browser, critique filed (0 blockers) |
+| C4 drill-in + diffs | **complete** — approve/reject cycles verified; grid round-trip asserted; see env-note below |
+| C5 structured replay | **complete** — `byteIdentical: true` asserted across a live reload+attach cycle |
+| C6 close-out | in progress |
+
+### Browser verification evidence (C3/C4/C5)
+
+All driven through the real UI against the real relay (`go build` binary + fake
+agent + omp), Playwright/Chromium:
+
+- hello advertises `transports ["pty","acp"]` + per-agent `agent_transports`; the
+  spawn dialog marks ACP-capable agents and defaults them to structured sessions.
+- Mixed grid: PTY xterm tile + structured stream tiles simultaneously.
+- Tile prompt → `prompt` frame → streamed `agent_message_chunk` rendered in-tile;
+  status pill flips to idle on turn end.
+- Drill-in: grid DOM untouched (order + scroll preserved, **asserted not
+  eyeballed**); Esc-with-pending-composer-text flashes instead of closing (the
+  named bug, prevented); Esc-empty returns to grid.
+- Diff review: pending card with path, hunk header, add/del washes, per-hunk
+  ✓/✕, explicit Approve/Reject sending `permission_response {outcome,
+  option_id}` over the live WebSocket (captured frames verified for both
+  outcomes); reject clears state back to running.
+- Raw event-log pane toggled by `{}` / `d`.
+- Replay: Past-sessions dispatch on `meta.capture: "acp-jsonl"`; replay streams
+  through the SAME ingest/render path; after a live run + full page reload +
+  attach, the event log holds exactly the live frames and
+  `serializeStream(live) === serializeStream(replay)` (**byteIdentical: true**).
+- Screenshots + rubric critique filed under `docs/design/` (0 blocker findings).
+
+### Known environment note (C4, honest)
+
+The final leg of the real-`omp` permission cycle — omp *raising* the permission
+during this session's E2E — could not be exercised because Chirag's local
+omp/provider config rejects large `max_tokens` (`400 … exceeds maximum 16384`),
+and omp auto-approves writes under its default mode. The permission round trip
+itself is proven at three other levels: relay↔agent Go test (fake agent),
+browser UI decision frames captured over the live WebSocket, and real-omp
+streaming (init/session/prompt/updates/idle) through the full stack. To exercise
+the last leg later: set `acp_args = ["acp", "--approval-mode", "always-ask"]` on
+the omp agent in `relay.toml` once the model config permits full turns.
 
 ### C0 evidence
 
