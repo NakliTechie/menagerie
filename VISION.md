@@ -142,11 +142,16 @@ Structured tile rendering (message stream, tool calls, status). Drill-in surface
 with diff review. Event-log replay (`acp-jsonl` capture beside `pty-bytes`).
 Ships the desktop-application shape without becoming a desktop application.
 
-### v1.2 — "It's a tree."
+### v1.2 — "It's a tree." (shipped)
 
-The deferred supervisor-tree work: tree view toggle, nested child sessions,
-subtree kill, multi-workspace tabs, cross-relay child-spawn. The tree remains
-the research surface; the structured transport is now the load-bearing one.
+**Shipped:** protocol-declared parentage (`spawn.parent_session_id`, `child_spawned`,
+`hosts_children`), a collapsible **supervisor tree** (sidebar + a Grid/Tree toggle with
+grid grouping), a spawn-child affordance, and **subtree kill** (`signal{kill, subtree}`).
+A supervisor session and its workers read as one shape you can collapse, follow, and
+stop as a unit — the tree remains the research surface; the structured transport is the
+load-bearing one. **Deferred to v1.2.x:** cross-relay child-spawn, multi-workspace tabs,
+and the agent-to-agent coordination layer (`wait` / atomic prompt+wait / self-reported
+status — see `docs/design/v1.2-spec.md` §8, informed by herdr).
 
 ### Beyond v1.2 — not promised, possible
 
