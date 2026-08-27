@@ -61,8 +61,9 @@ Anything the browser can do, an agent can do too — **the protocol *is* the SDK
 ## What makes it different
 
 - **Zero-server, vendor-neutral** — no daemon we host, agents listed alphabetically, nothing bundled or promoted.
-- **You own the data** — sessions and full terminal trajectories live in your folder; replay any past run with a scrubber.
-- **Built for many at once** — live status per tile (running · needs-input · rate-limited · idle), a chime when an agent needs you, drag to reorder, fullscreen any tile.
+- **Two ways to watch an agent** — PTY tiles stream the raw terminal; structured (ACP) sessions stream messages, tool calls, and **in-browser diff review**: approve or reject each proposed file edit from the tile. Nothing is special-cased by agent name — any agent that speaks ACP gets the richer face.
+- **You own the data** — sessions, terminal trajectories, *and* structured event logs live in your folder; replay any past run.
+- **Built for many at once** — live status per tile (running · needs-input · rate-limited · idle), a chime when an agent needs you, drag to reorder, fullscreen or drill into any tile.
 - **Survives refreshes** — relays keep running; reload the page and your live tiles re-attach.
 
 ## Repo layout

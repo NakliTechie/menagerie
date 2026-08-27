@@ -1,0 +1,12 @@
+{
+  "type": "hello",
+  "protocol_version": "1.2",
+  "relay_version": "0.5.0",
+  "relay_name": "m4pro-home",
+  "host_os": "darwin",
+  "host_arch": "arm64",
+  "agents": ["claude-code", "custom", "mini", "omp"],
+  "transports": ["pty", "acp"],
+  "hosts_children": false,
+  "agent_transports": { "omp": ["acp"], "claude-code": ["pty"], "custom": ["pty"], "mini": ["pty"] }
+}

@@ -1,0 +1,9 @@
+{
+  "type": "spawn",
+  "agent": "omp",
+  "cwd": "/Users/chirag/code/sieve",
+  "args": [],
+  "env": {},
+  "client_id": "5f1c9a3e-8d24-4b7f-9c31-a2b6e4d8f701",
+  "transport": "acp"
+}

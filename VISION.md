@@ -128,30 +128,41 @@ The skeleton: browser app + one relay flavor + three shims + flat grid. Enough t
 - Cross-trajectory search
 - OS notifications
 
-### v1.1 — fleet release (Phase 2)
+### v1.1 — "It has a second face." (amended 2026-08-22)
 
-Activates the supervisor-tree wedge and broadens the agent menagerie. Single codebase, single URL, single deploy — the v1.0 surfaces remain unchanged, v1.1 adds.
+> **Roadmap amendment.** The original v1.1 ("fleet release", supervisor-tree UX)
+> moved to **v1.2** below. Rationale: the v1.0 protocol was defined as
+> *PTY-streaming **or** structured-output* and only PTY shipped — the structured
+> half was scaffolded, never built. ACP is the first stable vendor-neutral
+> structured source available, so the scaffold gets filled before new UX research
+> opens.
 
-**Adds:**
-- Tree view toggle: parent agents at root, children nested, collapsible subtrees, SVG edge overlay
-- Multi-workspace tabs ("morning research", "Pulse migration", etc.)
-- `relay-py` and `relay-wasm` flavors shipped
-- Shims: `opencode`, `codex`, `aider`, `swe-agent`
-- Big-screen density mode (25–49 tiles, font shrinking, density slider)
-- Cross-trajectory search via History primitive (`Ctrl+K`)
-- OS notifications for idle-comes-alive and crashes
-- Tile drag-and-drop reordering within grid
-- Cross-relay child-spawn (a relay can spawn a tile that registers under a different relay's parent — for true distributed supervisor trees)
+**Shipped:** ACP transport as a first-class session kind (`spawn.transport`).
+Structured tile rendering (message stream, tool calls, status). Drill-in surface
+with diff review. Event-log replay (`acp-jsonl` capture beside `pty-bytes`).
+Ships the desktop-application shape without becoming a desktop application.
 
-### Beyond v1.1 — not promised, possible
+### v1.2 — "It's a tree."
+
+The deferred supervisor-tree work: tree view toggle, nested child sessions,
+subtree kill, multi-workspace tabs, cross-relay child-spawn. The tree remains
+the research surface; the structured transport is now the load-bearing one.
+
+### Beyond v1.2 — not promised, possible
 
 These are not v1.x. They live in a backlog and only graduate if a real user need surfaces.
 
 - Per-session token rotation mid-session
-- Structured-output renderers for specific agents (richer than xterm.js, lossy compared to PTY)
 - Read-only share link (export a trajectory to a static viewable file)
 - Browser-driven agent-to-agent message routing (currently agents talk via files in shared workdir; this would add a Menagerie-mediated channel)
 - Mobile companion view (read + needs-input answers only, no spawn)
+
+## North star
+
+As people move to the cloud and run terminal agents there, they will need a
+desktop GUI that connects to local / remote TUI agents. That is the guiding
+light for every surface decision: one window, many machines, agents you can see
+and steer.
 
 ## Hard NOT-to-do rules
 
@@ -179,6 +190,22 @@ These don't soften. If a feature requires breaking these, the feature doesn't sh
 
 v1.0 ships when Chirag can, in a single browser tab, spawn a mini-swe-agent on the M4 Pro and a claude-code session on the Studio, watch both tiles update in real time, answer a needs-input prompt without leaving the tab, kill one, and replay the killed session's trajectory from FSA.
 
-v1.1 ships when the same setup scales to a supervisor agent spawning four worker mini-swe-agent children, all visible as a tree, expandable, killable individually or as a subtree.
+v1.1 (structured transport) shipped when Chirag could, in one browser tab: spawn an `omp acp` session and a PTY session, see both as tiles with different render modes, drill into the omp tile, read a streamed response with tool calls expanded, review a proposed file diff and approve or reject it from the browser, return to the grid without losing either session — then close the tab, reopen, and replay the structured session from its event log. Verified 2026-08-22; evidence in `docs/design/v1.1-rubric-critique.md` + `STATE.md`.
+
+## Role matrix — re-run for v1.1 (2026-08-22)
+
+The milestone's spine added an actor, so the matrix re-fires (handoff §C6):
+
+| Actor | Surface | Authority | v1.1 delta |
+|---|---|---|---|
+| Human at desktop | grid + drill-in | full control | NEW: structured tiles, diff approve/reject, raw event-log pane |
+| Human on phone | drawer + single-column tiles | steer + answer | structured sessions render + prompt from mobile |
+| **ACP agent** | **NEW machine actor** | **requests** filesystem writes via `permission_request`; cannot act without a human decision | everything about this milestone |
+| PTY agent (TUI) | terminal tile | performs writes directly under its own approval model | unchanged; shares tile chrome |
+| Relay | local process | owns children, mints tokens | spawns stdio JSON-RPC children; never tmux-wraps them |
+
+The load-bearing asymmetry: a PTY agent *does* things you watch; an ACP agent
+*proposes* things you decide. The drill-in surface exists because that
+difference needed a first-class place to live.
 
 Beyond that, the test is portfolio-shape: does the tool *belong* alongside Bahi, Tijori, VaultMind, Forge? If yes, it's done what it set out to do.

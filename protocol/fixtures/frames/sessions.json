@@ -1,0 +1,7 @@
+{
+  "type": "sessions",
+  "sessions": [
+    { "session_id": "a1b2c3d4e5f6a7b8", "agent": "mini", "started_at": "2026-08-22T10:30:00Z", "pid": 12345 },
+    { "session_id": "b2c3d4e5f6a7b8c9", "agent": "omp", "started_at": "2026-08-22T10:31:00Z", "pid": 12350 }
+  ]
+}

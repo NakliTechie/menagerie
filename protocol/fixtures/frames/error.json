@@ -1,0 +1,1 @@
+{ "type": "error", "session_id": "a1b2c3d4e5f6a7b8", "code": "invalid_token", "message": "unknown session or bad token" }
