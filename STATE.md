@@ -73,6 +73,52 @@ the omp agent in `relay.toml` once the model config permits full turns.
 - `protocol/acp-pin.md` records commit `b7f0005493b98de32fabee3e9540e2b64da68535`,
   schema/v1.
 
+## Post-C6: instrument bar (2026-08-27)
+
+The drill-in's instrument bar (design §2 — context gauge · model · thinking ·
+mode · token counters · status) was thin: the render read `usage.totalTokens`,
+a field ACP never sends, and model/mode/thinking were never plumbed at all.
+Grounded in the real omp handshake fixture (`protocol/fixtures/acp-smoke.jsonl`):
+model / mode / thought_level ship in the **session/new result**, and per-turn
+usage ships in the **prompt result** — both responses the browser never sees
+(the relay forwards only notifications).
+
+Fix (relay + browser, additive, protocol 1.2 unchanged):
+- Relay captures `configOptions` from the session/new result
+  ([relay-go/internal/acp/session.go](relay-go/internal/acp/session.go)) and
+  re-surfaces it to the browser as a synthetic `config_option_update`
+  session/update on spawn; per-turn `usage` from the prompt result is
+  re-surfaced as a `_menagerie/turn_usage` update on turn end
+  ([relay-go/internal/server/server.go](relay-go/internal/server/server.go)).
+  Both ride the existing `deliverStructured` funnel (seq'd, tailed, persisted,
+  replayed), and the latest of each is kept on the sessionEntry and re-emitted
+  on re-attach (seq -1) so a long session restores them after they scroll out
+  of the 256-frame tail ring.
+- Browser derives model/mode/thinking (label-resolved) + context-window gauge
+  (`used/size`, colored ≥80% yellow / ≥95% red) + turn token counters, each
+  collapsing when absent (never fabricated). `current_mode_update` now reads the
+  spec field `currentModeId` (was reading a non-existent `current_mode`).
+
+Verification:
+- Relay: `go build ./... && go test -race ./...` — all pass (4.6s); new
+  `TestACPInstrumentFrames` asserts the config + turn_usage frames cross the
+  wire with correct selectors and token totals.
+- Browser (served, real render): drill-in bar shows
+  `ctx ▮ 62% · 124k/200k · model Claude Opus 4 · think Medium · mode Default ·
+  tokens 21k (in 21k · out 412) · status` (DOM-read, not eyeballed); a bare
+  session collapses to `status idle` only.
+- Replay parity: `serializeStream` excludes config/usage (state fields, not
+  stream items) — C5's byte-identical invariant is structurally untouched
+  (observed: `serIncludesConfig: false`).
+
+- **D10 — config selectors re-surfaced as `config_option_update`.** The array is
+  the agent's own `configOptions` verbatim; only the delivery channel changes
+  (response → notification). Real ACP update kind, shape-accurate.
+- **D11 — turn usage rides `_menagerie/turn_usage`.** ACP has no notification for
+  per-turn token counts; the `_`-prefix reserves it for menagerie per the ACP
+  extension rule. Distinct from ACP's context-window `usage_update` ({used,size}),
+  which still drives the gauge when an agent sends it.
+
 ## Doc ↔ repo divergences (found at C0, 2026-08-22)
 
 1. **Protocol version collision — load-bearing.** Handoff C1 says "Protocol version

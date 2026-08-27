@@ -20,7 +20,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Menagerie" />
   <!-- Apply the saved theme before first paint so dark users don't flash light. -->
-  <script>try{if(localStorage.getItem('menagerie-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+  <script>try{if(localStorage.getItem('menagerie-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch{}</script>
   <!-- xterm.js 5.5.0 (cdnjs, unminified — cdnjs has no min.js for this version). UMD global: Terminal. -->
   <script defer
           src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.5.0/xterm.js"
@@ -224,8 +224,10 @@
     .drill-title { font-weight: 600; font-size: 14px; }
     .drill-title .sub { color: var(--faint); font-weight: 400; font-size: 12px; }
     .instrbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 12px; font-size: 12px; color: var(--muted); }
-    .instrbar .gauge { position: relative; flex: 0 0 120px; height: 6px; border-radius: 3px; background: var(--elev); overflow: hidden; }
+    .instrbar .ctx { display: inline-flex; align-items: center; gap: 8px; }
+    .instrbar .gauge { position: relative; display: inline-block; width: 90px; height: 6px; border-radius: 3px; background: var(--elev); overflow: hidden; vertical-align: middle; }
     .instrbar .gauge i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 3px; }
+    .instrbar strong { color: var(--text); font-weight: 600; }
     .drill-cols { display: grid; grid-template-columns: 200px 1fr; gap: 10px; flex: 1; min-height: 0; }
     @media (max-width: 900px) { .drill-cols { grid-template-columns: 1fr; } .drill-rail { display: none; } }
     .drill-rail { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px; overflow-y: auto; }
@@ -657,119 +659,131 @@
     function removeRelay(id) {
       const i = relays.findIndex((r) => r.id === id); if (i < 0) return;
       relays[i].removed = true; clearTimeout(relays[i].retryTimer);
-      try { relays[i].ws && relays[i].ws.close(); } catch {}
+      try { if (relays[i].ws) relays[i].ws.close(); } catch {}
       // Tear down this relay's tiles — they can't reconnect once the relay is gone.
-      for (const s of [...sessions.values()]) if (s.relayId === id && !s.replay) destroyTile(s);
+      // Snapshot first: destroyTile deletes from `sessions` mid-iteration.
+      for (const s of Array.from(sessions.values())) if (s.relayId === id && !s.replay) destroyTile(s);
       relays.splice(i, 1); persistRelays(); renderAll();
     }
 
-    function handleMessage(relay, msg) {
-      switch (msg.type) {
-        case "hello":
-          relay.hello = msg; if (!relay.name || relay.name === relay.url) relay.name = msg.relay_name || relay.url;
-          if (msg.protocol_version && msg.protocol_version.split(".")[0] !== PROTOCOL_VERSION.split(".")[0]) console.warn(`relay protocol ${msg.protocol_version} != app ${PROTOCOL_VERSION}`);
-          if (relay.token) send(relay, { type: "register", registration_token: relay.token });
-          else { relay.status = "needs_token"; renderAll(); }
-          break;
-        case "registered": relay.status = "connected"; relay.error = null; relay.retries = 0; break;
-        case "spawned": {
-          closeModal("spawnScrim");
-          const sess = { id: msg.session_id, relayId: relay.id, relayName: relay.name, agent: msg.agent, token: msg.session_token,
-            transport: pendingTransport.get(msg.client_id) || "pty",
-            status: "running", startedAt: Date.now(), cwd: pendingCwd.get(msg.client_id) || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
-          pendingCwd.delete(msg.client_id); pendingTransport.delete(msg.client_id);
-          initAcpState(sess);
-          sessions.set(sess.id, sess);
-          if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess); else showSpawnResult("xterm.js failed to load", false);
-          writeSessionMeta(sess);
-          break;
-        }
-        case "sessions": {
-          // On (re)connect the relay lists live sessions; (re-)attach each so a full
-          // refresh (fresh map → new tile) or a transient drop (revive "lost" tile) restores them.
-          for (const info of (msg.sessions || [])) {
-            const existing = sessions.get(info.session_id);
-            if (existing) {
-              if (existing.status === "lost") {
-                setSessionStatus(existing, "running");
-                if (existing.ti) existing.ti.disabled = false;
-                if (existing.sendBtn) existing.sendBtn.disabled = false;
-                send(relay, { type: "attach", session_id: info.session_id });
-              }
-              continue; // already live
-            }
-            const sess = { id: info.session_id, relayId: relay.id, relayName: relay.name, agent: info.agent, token: null,
-              transport: supportsACP(relay, info.agent) ? "acp" : "pty",
-              status: "running", startedAt: Date.parse(info.started_at) || Date.now(), cwd: "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
-            initAcpState(sess);
-            sessions.set(sess.id, sess);
-            if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
-            send(relay, { type: "attach", session_id: info.session_id });
-          }
-          break;
-        }
-        case "attached": {
-          const s = sessions.get(msg.session_id); if (!s) break;
-          s.token = msg.session_token;
-          if (s.term) s.term.reset(); // the replay frame that follows rebuilds the buffer cleanly
-          setSessionStatus(s, "running"); fitTile(s);
-          break;
-        }
-        case "output": {
-          const s = sessions.get(msg.session_id); if (!s || !s.term) break;
-          const bytes = bytesFromB64(msg.data); if (!bytes) break;
-          s.term.write(bytes);
-          if (FS.ok() && msg.seq >= 0) s.pending.push(bytes); // seq -1 = replay-on-attach; don't re-persist
-          if (s.status === "needs_input" || s.status === "idle" || s.status === "rate_limited") setSessionStatus(s, "running");
-          break;
-        }
-        case "event": {
-          const s = sessions.get(msg.session_id); if (!s) break;
-          if (msg.event === "exited") {
-            setSessionStatus(s, "exited");
-            if (s.ti) s.ti.disabled = true; if (s.sendBtn) s.sendBtn.disabled = true;
-            if (s.timer) clearInterval(s.timer);
-            if (s.term) s.term.write(`\r\n\x1b[90m— exited (code ${msg.exit_code}) —\x1b[0m\r\n`);
-            s.endedAt = Date.now(); s.exitCode = msg.exit_code;
-            flushSession(s).then(() => writeSessionMeta(s)).then(refreshPastSessions);
-          } else if (msg.event === "needs_input") { if (s.status !== "needs_input") beep(); setSessionStatus(s, "needs_input"); }
-          else if (msg.event === "stalled") { if (s.status !== "stalled") beep(); setSessionStatus(s, "stalled"); } // likely looping — sticky until you act
-          else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
-          else if (msg.event === "idle") setSessionStatus(s, "idle");
-          break;
-        }
-        case "session_update": {
-          const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") break;
-          ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
-          // seq -1 = replayed-on-attach history; already on disk — never re-persist.
-          if (FS.ok() && msg.seq >= 0 && msg.seq > (s.acp.persistedSeq || 0)) { s.acp.persistedSeq = msg.seq; persistAcpLine(s, { dir: "a>c", at: new Date().toISOString(), frame: msg.acp }); }
-          renderStreamTile(s);
-          break;
-        }
-        case "permission_request": {
-          const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") break;
-          // Ingest even at seq -1: a replayed request restores live decision state.
-          ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
-          if (FS.ok() && msg.seq >= 0 && msg.seq > (s.acp.persistedSeq || 0)) { s.acp.persistedSeq = msg.seq; persistAcpLine(s, { dir: "a>c", at: new Date().toISOString(), frame: msg.acp }); }
-          const params = (msg.acp && msg.acp.params) || {};
-          s.acp.pendingPerm = { request_id: msg.request_id, toolCall: params.toolCall || null, options: params.options || [] };
-          if (s.status !== "needs_input") beep();
-          setSessionStatus(s, "needs_input");
-          renderStreamTile(s);
-          if ($("drill").classList.contains("open") && drillSid === s.id) renderDrill(s);
-          break;
-        }
-        case "error":
-          if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} }
-          else if (msg.code === "frames_dropped") {
-            const s = sessions.get(msg.session_id);
-            if (s && s.transport === "acp") { s.acp.dropped = (s.acp.dropped || 0) + 1; renderStreamTile(s); }
-            else showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
-          }
-          else showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
-          break;
-        case "resume_failed": break;
+    // Persist a structured frame once, honoring the seq -1 replay convention and
+    // the persistedSeq high-water mark. Shared by the session_update / permission
+    // handlers so neither re-persists replayed history.
+    function persistIfNew(s, msg) {
+      if (FS.ok() && msg.seq >= 0 && msg.seq > (s.acp.persistedSeq || 0)) {
+        s.acp.persistedSeq = msg.seq;
+        persistAcpLine(s, { dir: "a>c", at: new Date().toISOString(), frame: msg.acp });
       }
+    }
+    // Build a fresh session record from a spawned/listed descriptor.
+    function makeSession(relay, id, agent, transport, startedAt, cwd) {
+      return { id, relayId: relay.id, relayName: relay.name, agent, token: null, transport,
+        status: "running", startedAt, cwd: cwd || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
+    }
+    function mountTile(sess) {
+      if (sess.transport === "acp") createStreamTile(sess);
+      else if (window.Terminal) createTile(sess);
+      else showSpawnResult("xterm.js failed to load", false);
+    }
+
+    // WebSocket message handlers, keyed by frame type. A table keeps the dispatch
+    // flat (no giant switch) and each handler shallow (no deep case nesting).
+    const MSG_HANDLERS = {
+      hello(relay, msg) {
+        relay.hello = msg; if (!relay.name || relay.name === relay.url) relay.name = msg.relay_name || relay.url;
+        if (msg.protocol_version && msg.protocol_version.split(".")[0] !== PROTOCOL_VERSION.split(".")[0]) console.warn(`relay protocol ${msg.protocol_version} != app ${PROTOCOL_VERSION}`);
+        if (relay.token) send(relay, { type: "register", registration_token: relay.token });
+        else { relay.status = "needs_token"; renderAll(); }
+      },
+      registered(relay) { relay.status = "connected"; relay.error = null; relay.retries = 0; },
+      spawned(relay, msg) {
+        closeModal("spawnScrim");
+        const sess = makeSession(relay, msg.session_id, msg.agent, pendingTransport.get(msg.client_id) || "pty", Date.now(), pendingCwd.get(msg.client_id) || "");
+        sess.token = msg.session_token;
+        pendingCwd.delete(msg.client_id); pendingTransport.delete(msg.client_id);
+        initAcpState(sess); sessions.set(sess.id, sess); mountTile(sess); writeSessionMeta(sess);
+      },
+      // On (re)connect the relay lists live sessions; (re-)attach each so a full
+      // refresh (fresh map → new tile) or a transient drop (revive "lost" tile) restores them.
+      sessions(relay, msg) { for (const info of (msg.sessions || [])) reviveOrAttach(relay, info); },
+      attached(relay, msg) {
+        const s = sessions.get(msg.session_id); if (!s) return;
+        s.token = msg.session_token;
+        if (s.term) s.term.reset(); // the replay frame that follows rebuilds the buffer cleanly
+        setSessionStatus(s, "running"); fitTile(s);
+      },
+      output(relay, msg) {
+        const s = sessions.get(msg.session_id); if (!s || !s.term) return;
+        const bytes = bytesFromB64(msg.data); if (!bytes) return;
+        s.term.write(bytes);
+        if (FS.ok() && msg.seq >= 0) s.pending.push(bytes); // seq -1 = replay-on-attach; don't re-persist
+        if (s.status === "needs_input" || s.status === "idle" || s.status === "rate_limited") setSessionStatus(s, "running");
+      },
+      event(relay, msg) { handleSessionEvent(msg); },
+      session_update(relay, msg) {
+        const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") return;
+        ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
+        persistIfNew(s, msg);
+        renderStreamTile(s);
+      },
+      permission_request(relay, msg) {
+        const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") return;
+        // Ingest even at seq -1: a replayed request restores live decision state.
+        ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
+        persistIfNew(s, msg);
+        const params = (msg.acp && msg.acp.params) || {};
+        s.acp.pendingPerm = { request_id: msg.request_id, toolCall: params.toolCall || null, options: params.options || [] };
+        if (s.status !== "needs_input") beep();
+        setSessionStatus(s, "needs_input");
+        renderStreamTile(s);
+        if ($("drill").classList.contains("open") && drillSid === s.id) renderDrill(s);
+      },
+      error(relay, msg) { handleErrorFrame(relay, msg); },
+      resume_failed() {},
+    };
+    function reviveOrAttach(relay, info) {
+      const existing = sessions.get(info.session_id);
+      if (existing) {
+        if (existing.status === "lost") {
+          setSessionStatus(existing, "running");
+          if (existing.ti) existing.ti.disabled = false;
+          if (existing.sendBtn) existing.sendBtn.disabled = false;
+          send(relay, { type: "attach", session_id: info.session_id });
+        }
+        return; // already live
+      }
+      const sess = makeSession(relay, info.session_id, info.agent, supportsACP(relay, info.agent) ? "acp" : "pty", Date.parse(info.started_at) || Date.now(), "");
+      initAcpState(sess); sessions.set(sess.id, sess);
+      if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
+      send(relay, { type: "attach", session_id: info.session_id });
+    }
+    function handleSessionExit(s, msg) {
+      setSessionStatus(s, "exited");
+      if (s.ti) s.ti.disabled = true; if (s.sendBtn) s.sendBtn.disabled = true;
+      if (s.timer) clearInterval(s.timer);
+      if (s.term) s.term.write(`\r\n\x1b[90m— exited (code ${msg.exit_code}) —\x1b[0m\r\n`);
+      s.endedAt = Date.now(); s.exitCode = msg.exit_code;
+      flushSession(s).then(() => writeSessionMeta(s)).then(refreshPastSessions);
+    }
+    function handleSessionEvent(msg) {
+      const s = sessions.get(msg.session_id); if (!s) return;
+      if (msg.event === "exited") handleSessionExit(s, msg);
+      else if (msg.event === "needs_input") { if (s.status !== "needs_input") beep(); setSessionStatus(s, "needs_input"); }
+      else if (msg.event === "stalled") { if (s.status !== "stalled") beep(); setSessionStatus(s, "stalled"); } // likely looping — sticky until you act
+      else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
+      else if (msg.event === "idle") setSessionStatus(s, "idle");
+    }
+    function handleErrorFrame(relay, msg) {
+      if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} return; }
+      if (msg.code === "frames_dropped") {
+        const s = sessions.get(msg.session_id);
+        if (s && s.transport === "acp") { s.acp.dropped = (s.acp.dropped || 0) + 1; renderStreamTile(s); return; }
+      }
+      showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
+    }
+    function handleMessage(relay, msg) {
+      const h = MSG_HANDLERS[msg.type];
+      if (h) h(relay, msg);
       renderAll();
     }
 
@@ -778,39 +792,68 @@
     // feed ingestAcpFrame(); everything downstream renders from sess.acp.items.
     function initAcpState(s) {
       if (s.transport !== "acp") return;
-      s.acp = { items: [], tools: new Map(), order: [], pendingPerm: null, dropped: 0, rawLog: [], persistedSeq: 0, usage: null, mode: null };
+      s.acp = { items: [], tools: new Map(), order: [], pendingPerm: null, dropped: 0, rawLog: [], persistedSeq: 0, usage: null, turnUsage: null, mode: null, config: {} };
     }
     const TOOL_GLYPH = { read: "▤", edit: "✎", delete: "✂", move: "⇄", search: "⌕", execute: "$", bash: "$", fetch: "↭", think: "✳", other: "•" };
     function toolGlyph(kind) { return TOOL_GLYPH[(kind || "").toLowerCase()] || "•"; }
     function toolMark(status) { return status === "completed" ? '<span class="ok">✓</span>' : status === "failed" || status === "rejected" ? '<span class="err">✗</span>' : '<span class="run">↺</span>'; }
 
+    // ACP session/update handlers, keyed by kind. A table (not a switch) keeps
+    // ingestAcpFrame flat and lets new update kinds land without branching growth.
+    const ACP_UPDATE = {
+      agent_message_chunk: (s, u) => appendMsg(s, "agent", blockText(u.content)),
+      user_message_chunk: (s, u) => appendMsg(s, "user", blockText(u.content)),
+      agent_thought_chunk: (s, u) => {
+        const A = s.acp, last = A.items[A.items.length - 1];
+        if (last && last.kind === "thought") last.text += blockText(u.content);
+        else A.items.push({ kind: "thought", text: blockText(u.content) });
+      },
+      tool_call: (s, u) => upsertTool(s, u),
+      tool_call_update: (s, u) => upsertTool(s, u),
+      current_mode_update: (s, u) => {
+        // ACP sends only the id (`currentModeId`); a label needs availableModes,
+        // which we usually already hold from config_option_update's "mode" option.
+        const A = s.acp, id = u.currentModeId || (u.current_mode && (u.current_mode.id || u.current_mode.name));
+        if (id) A.config.mode = { value: id, label: configLabel(A.config.mode, id) };
+        A.mode = (A.config.mode && A.config.mode.label) || id || A.mode;
+      },
+      config_option_update: (s, u) => ingestConfigOptions(s.acp, u.configOptions),
+      usage_update: (s, u) => { s.acp.usage = u; },                        // ACP context-window {used,size,cost}
+      "_menagerie/turn_usage": (s, u) => { s.acp.turnUsage = u.usage || null; }, // relay-surfaced turn token counts
+    };
     function ingestAcpFrame(s, rec) {
       const A = s.acp; if (!A) return;
       A.rawLog.push(rec);
       const f = rec.frame; if (!f) return;
       if (f.method === "session/update") {
         const u = (f.params && f.params.update) || {};
-        switch (u.sessionUpdate) {
-          case "agent_message_chunk": appendMsg(s, "agent", blockText(u.content)); break;
-          case "user_message_chunk": appendMsg(s, "user", blockText(u.content)); break;
-          case "agent_thought_chunk": {
-            const last = A.items[A.items.length - 1];
-            if (last && last.kind === "thought") last.text += blockText(u.content);
-            else A.items.push({ kind: "thought", text: blockText(u.content) });
-            break;
-          }
-          case "tool_call":
-          case "tool_call_update": upsertTool(s, u); break;
-          case "current_mode_update": A.mode = (u.current_mode && (u.current_mode.name || u.current_mode.id)) || A.mode; break;
-          case "usage_update": A.usage = u; break;
-          default:
-            A.items.push({ kind: "unknown", label: u.sessionUpdate || "update", json: JSON.stringify(u).slice(0, 400) });
-        }
-      } else if (f.method === "session/request_permission") {
-        // Decision state lives on permission_request frames; nothing extra here.
-      } else {
+        const h = ACP_UPDATE[u.sessionUpdate];
+        if (h) h(s, u);
+        else A.items.push({ kind: "unknown", label: u.sessionUpdate || "update", json: JSON.stringify(u).slice(0, 400) });
+      } else if (f.method !== "session/request_permission") {
+        // Permission decision state lives on permission_request frames; other
+        // responses (session/new, prompt) carry no transcript content of their own.
         A.items.push({ kind: "unknown", label: f.method || "response", json: JSON.stringify(f.result !== undefined ? f.result : f).slice(0, 400) });
       }
+    }
+    // Derive model / mode / thinking selectors from an ACP configOptions array.
+    // Keyed by semantic category; the current value's human label is looked up in
+    // the option list (falling back to the raw id). Idempotent — safe to re-ingest
+    // on replay/re-attach.
+    function ingestConfigOptions(A, opts) {
+      if (!Array.isArray(opts)) return;
+      for (const o of opts) {
+        if (!o || o.type !== "select" || o.currentValue == null) continue;
+        const cat = o.category || o.id;
+        const label = (o.options || []).find((x) => x.value === o.currentValue);
+        A.config[cat] = { value: o.currentValue, label: (label && label.name) || String(o.currentValue), options: o.options || [] };
+      }
+      if (A.config.mode) A.mode = A.config.mode.label;
+    }
+    // Label an id against a previously-captured select's options (for currentModeId).
+    function configLabel(prev, id) {
+      const hit = prev && (prev.options || []).find((x) => x.value === id);
+      return (hit && hit.name) || (prev && prev.value === id && prev.label) || String(id);
     }
     function blockText(b) {
       if (!b) return "";
@@ -837,6 +880,33 @@
     }
 
     // ---- tile-scale view (C3): last activity only; everything else on drill-in ----
+    // One compact tile row for a transcript item (tool / msg / thought / unknown).
+    function streamRow(it) {
+      const row = document.createElement("div");
+      if (it.kind === "tool") {
+        row.className = "st-row tool" + (it.status === "completed" ? " done" : "");
+        row.innerHTML = `<span class="g">${toolGlyph(it.toolKind)}</span><span class="t"></span>${toolMark(it.status)}`;
+        row.querySelector(".t").textContent = it.title;
+      } else if (it.kind === "msg") {
+        row.className = "st-row msg"; row.innerHTML = `<span class="g">${it.role === "user" ? "❯" : "◆"}</span><span class="t"></span>`;
+        row.querySelector(".t").textContent = it.text;
+      } else if (it.kind === "thought") {
+        row.className = "st-row thought"; row.innerHTML = `<span class="g">✳</span><span class="t"></span>`;
+        row.querySelector(".t").textContent = "thinking…";
+      } else {
+        row.className = "st-row unknown"; row.innerHTML = `<span class="g">${escapeHtml(it.label)}</span><span class="t"></span>`;
+        row.querySelector(".t").textContent = it.json;
+      }
+      return row;
+    }
+    function streamPermStrip(s) {
+      const p = s.acp.pendingPerm;
+      const btn = document.createElement("button"); btn.className = "st-permstrip";
+      const what = (p.toolCall && (p.toolCall.title || p.toolCall.toolCallId)) || "action";
+      btn.innerHTML = `<span>▮ permission requested — ${escapeHtml(what)}</span><span style="margin-left:auto">review →</span>`;
+      btn.addEventListener("click", () => openDrill(s));
+      return btn;
+    }
     function renderStreamTile(s) {
       if (!s.streamEl || !s.acp) return;
       const A = s.acp;
@@ -845,38 +915,13 @@
         const w = document.createElement("div"); w.className = "empty-soft"; w.textContent = "waiting for the agent's first frame…";
         s.streamEl.appendChild(w); return;
       }
-      const visible = A.items.slice(-7);
-      for (const it of visible) {
-        const row = document.createElement("div");
-        if (it.kind === "tool") {
-          row.className = "st-row tool" + (it.status === "completed" ? " done" : "");
-          row.innerHTML = `<span class="g">${toolGlyph(it.toolKind)}</span><span class="t"></span>${it.status === "pending" ? toolMark(it.status) : toolMark(it.status)}`;
-          row.querySelector(".t").textContent = `${it.title}`;
-        } else if (it.kind === "msg") {
-          row.className = "st-row msg"; row.innerHTML = `<span class="g">${it.role === "user" ? "❯" : "◆"}</span><span class="t"></span>`;
-          row.querySelector(".t").textContent = it.text;
-        } else if (it.kind === "thought") {
-          row.className = "st-row thought"; row.innerHTML = `<span class="g">✳</span><span class="t"></span>`;
-          row.querySelector(".t").textContent = "thinking…";
-        } else {
-          row.className = "st-row unknown"; row.innerHTML = `<span class="g">${escapeHtml(it.label)}</span><span class="t"></span>`;
-          row.querySelector(".t").textContent = it.json;
-        }
-        s.streamEl.appendChild(row);
-      }
+      for (const it of A.items.slice(-7)) s.streamEl.appendChild(streamRow(it));
       if (A.dropped > 0) {
         const d = document.createElement("div"); d.className = "st-drop";
         d.textContent = `⚠ ${A.dropped} update${A.dropped === 1 ? "" : "s"} dropped (slow connection)`;
         s.streamEl.appendChild(d);
       }
-      if (A.pendingPerm) {
-        const p = A.pendingPerm;
-        const btn = document.createElement("button"); btn.className = "st-permstrip";
-        const what = (p.toolCall && (p.toolCall.title || p.toolCall.toolCallId)) || "action";
-        btn.innerHTML = `<span>▮ permission requested — ${escapeHtml(what)}</span><span style="margin-left:auto">review →</span>`;
-        btn.addEventListener("click", () => openDrill(s));
-        s.streamEl.appendChild(btn);
-      }
+      if (A.pendingPerm) s.streamEl.appendChild(streamPermStrip(s));
       s.streamEl.scrollTop = s.streamEl.scrollHeight;
     }
 
@@ -895,36 +940,20 @@
     function composerHasText() { const ta = $("drillComposer"); return ta && ta.value.length > 0; }
     function flashComposer() { const c = $("drill").querySelector(".composer"); c.classList.add("flash"); setTimeout(() => c.classList.remove("flash"), 450); }
 
-    function renderDrill(s) {
-      if (!s.acp) return;
-      const A = s.acp;
-      $("drillTitle").innerHTML = `${escapeHtml(s.agent)} <span class="sub">· ${escapeHtml(s.relayName)}${s.cwd ? " · " + escapeHtml(s.cwd) : ""}</span>`;
-      const inst = $("instrumentBar");
-      inst.innerHTML = "";
-      const bits = [];
-      if (A.usage && A.usage.totalTokens != null) bits.push(`<span>tokens <strong>${A.usage.totalTokens}</strong>${A.usage.inputTokens != null ? ` (in ${A.usage.inputTokens} · out ${A.usage.outputTokens ?? "?"})` : ""}</span>`);
-      if (A.mode) bits.push(`<span>mode <strong>${escapeHtml(String(A.mode))}</strong></span>`);
-      bits.push(`<span>status <strong>${escapeHtml(s.status)}</strong></span>`);
-      inst.innerHTML = bits.join("");
-      // transcript
-      const tr = $("transcript"); tr.innerHTML = "";
-      for (const it of A.items) tr.appendChild(renderTranscriptRow(it));
-      tr.scrollTop = tr.scrollHeight;
-      // permission banner + diffs
-      const pv = $("permZone"); pv.innerHTML = "";
-      if (A.pendingPerm) {
-        const card = buildDiffCard(s, A.pendingPerm, "pending");
-        pv.appendChild(card);
-      } else {
-        for (const id of [...A.tools.keys()].reverse()) {
-          const t = A.tools.get(id);
-          if ((t.diffs || []).length && (t.status === "completed" || t.status === "failed")) {
-            const card = buildDiffCard(s, { toolCall: { title: t.title, content: (t.diffs || []).map((d) => ({ type: "diff", ...d })) }, _done: t.status }, t.status === "completed" ? "approved" : "rejected");
-            pv.appendChild(card);
-          }
-        }
+    // Permission zone: the pending diff card, or the resolved diffs of finished
+    // tool calls (newest first). Empties first — idempotent on every render.
+    function renderPermZone(s) {
+      const A = s.acp, pv = $("permZone"); pv.innerHTML = "";
+      if (A.pendingPerm) { pv.appendChild(buildDiffCard(s, A.pendingPerm, "pending")); return; }
+      for (const id of [...A.tools.keys()].reverse()) {
+        const t = A.tools.get(id);
+        if (!(t.diffs || []).length || (t.status !== "completed" && t.status !== "failed")) continue;
+        const perm = { toolCall: { title: t.title, content: (t.diffs || []).map((d) => ({ type: "diff", ...d })) }, _done: t.status };
+        pv.appendChild(buildDiffCard(s, perm, t.status === "completed" ? "approved" : "rejected"));
       }
-      // rail
+    }
+    // Session rail: switch between live sessions without routing through the grid.
+    function renderDrillRail(s) {
       const rail = $("drillRailSessions"); rail.innerHTML = "";
       for (const o of sessions.values()) {
         if (o.replay) continue;
@@ -936,12 +965,72 @@
         row.addEventListener("click", () => { openDrill(o); });
         rail.appendChild(row);
       }
-      // raw log
+    }
+    function renderDrill(s) {
+      if (!s.acp) return;
+      const A = s.acp;
+      $("drillTitle").innerHTML = `${escapeHtml(s.agent)} <span class="sub">· ${escapeHtml(s.relayName)}${s.cwd ? " · " + escapeHtml(s.cwd) : ""}</span>`;
+      renderInstrumentBar(s);
+      const tr = $("transcript"); tr.innerHTML = "";
+      for (const it of A.items) tr.appendChild(renderTranscriptRow(it));
+      tr.scrollTop = tr.scrollHeight;
+      renderPermZone(s);
+      renderDrillRail(s);
       renderRawLog(s);
       // pending-permission hint in composer area
       const banner = $("drillPermBanner");
       if (A.pendingPerm) { banner.style.display = ""; banner.textContent = `permission requested — ${(A.pendingPerm.toolCall && A.pendingPerm.toolCall.title) || "action"} · decide above`; }
       else banner.style.display = "none";
+    }
+
+    // Instrument bar (design §2): context gauge · model · thinking · mode · tokens
+    // · cost · status. Every field renders only when the agent actually exposes it
+    // — absent data collapses, never fabricated.
+    function fmtTokens(n) { return n == null ? null : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n); }
+    // Context-window gauge element from {used,size}, or null when absent — never
+    // fabricated. Fill goes yellow ≥80%, red ≥95%.
+    function instrGauge(usage) {
+      if (!usage || !(usage.size > 0) || usage.used == null) return null;
+      const pct = Math.min(100, Math.round((usage.used / usage.size) * 100));
+      const g = document.createElement("div"); g.className = "gauge"; g.title = `context ${usage.used} / ${usage.size} tokens`;
+      const fill = document.createElement("i"); fill.style.width = pct + "%";
+      fill.style.background = pct >= 95 ? "var(--red)" : pct >= 80 ? "var(--yellow)" : "var(--accent)";
+      g.appendChild(fill);
+      const wrap = document.createElement("span"); wrap.className = "ctx";
+      wrap.append(document.createTextNode("ctx "), g, document.createTextNode(` ${pct}% · ${fmtTokens(usage.used)}/${fmtTokens(usage.size)}`));
+      return wrap;
+    }
+    // Turn token counters string from the last prompt result, or null.
+    function fmtTurn(tu) {
+      if (!tu || tu.totalTokens == null) return null;
+      const io = tu.inputTokens != null ? `</strong> (in ${fmtTokens(tu.inputTokens)} · out ${fmtTokens(tu.outputTokens ?? 0)})<strong>` : "";
+      return `${fmtTokens(tu.totalTokens)}${io}`;
+    }
+    function fmtCost(cost) {
+      if (!cost || cost.amount == null) return null;
+      return `${escapeHtml(String(cost.amount))}${cost.currency ? " " + escapeHtml(cost.currency) : ""}`;
+    }
+    function renderInstrumentBar(s) {
+      const A = s.acp, C = A.config, inst = $("instrumentBar");
+      inst.innerHTML = "";
+      const gauge = instrGauge(A.usage);
+      if (gauge) inst.appendChild(gauge);
+      const modeLabel = (C.mode && C.mode.label) || A.mode;
+      // [label, value] pairs; each helper/expression yields null when absent, and
+      // absent fields are skipped — the bar never fabricates a value.
+      const fields = [
+        ["model", C.model && escapeHtml(C.model.label)],
+        ["think", C.thought_level && escapeHtml(C.thought_level.label)],
+        ["mode", modeLabel && escapeHtml(String(modeLabel))],
+        ["tokens", fmtTurn(A.turnUsage)],
+        ["cost", fmtCost(A.usage && A.usage.cost)],
+        ["status", escapeHtml(s.status)],
+      ];
+      for (const [label, val] of fields) {
+        if (!val) continue;
+        const sp = document.createElement("span"); sp.innerHTML = `${label} <strong>${val}</strong>`;
+        inst.appendChild(sp);
+      }
     }
 
     function renderTranscriptRow(it) {
@@ -974,74 +1063,81 @@
       return row;
     }
 
-    // Line diff with 3 lines of context, computed honestly from given texts.
-    function computeHunks(oldText, newText, ctx = 3) {
-      const a = (oldText || "").split("\n"), b = (newText || "").split("\n");
+    // Longest common prefix (p) and the trailing match bounds (sa, sb) of two
+    // line arrays — the unchanged frame around the single changed region.
+    function commonBounds(a, b) {
       let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
       let sa = a.length - 1, sb = b.length - 1;
       while (sa >= p && sb >= p && a[sa] === b[sb]) { sa--; sb--; }
+      return { p, sa, sb };
+    }
+    // Line diff with 3 lines of context, computed honestly from given texts.
+    function computeHunks(oldText, newText, ctx = 3) {
+      const a = (oldText || "").split("\n"), b = (newText || "").split("\n");
+      const { p, sa, sb } = commonBounds(a, b);
       const del = a.slice(p, sa + 1), add = b.slice(p, sb + 1);
       if (!del.length && !add.length) return [];
-      const start = Math.max(0, p - ctx);
-      const hunks = [{ head: `@@ -${p + 1} +${p + 1} @@`, lines: [] }];
-      for (let i = start; i < p; i++) hunks[0].lines.push({ t: " ", x: a[i] });
-      for (const l of del) hunks[0].lines.push({ t: "-", x: l });
-      for (const l of add) hunks[0].lines.push({ t: "+", x: l });
-      const endCtx = Math.min(a.length - 1, sa + ctx);
-      for (let i = sa + 1; i <= endCtx; i++) hunks[0].lines.push({ t: " ", x: a[i] });
-      return hunks;
+      const lines = [];
+      for (let i = Math.max(0, p - ctx); i < p; i++) lines.push({ t: " ", x: a[i] });
+      for (const l of del) lines.push({ t: "-", x: l });
+      for (const l of add) lines.push({ t: "+", x: l });
+      for (let i = sa + 1, endCtx = Math.min(a.length - 1, sa + ctx); i <= endCtx; i++) lines.push({ t: " ", x: a[i] });
+      return [{ head: `@@ -${p + 1} +${p + 1} @@`, lines }];
     }
-    function buildDiffCard(s, perm, state) {
-      const tc = perm.toolCall || {};
-      const card = document.createElement("div"); card.className = "diffcard"; card.dataset.state = state;
+    // One diff hunk element. In the pending state each hunk gets ✓/✕ affordances.
+    function diffHunkEl(hunk, state) {
+      const h = document.createElement("div"); h.className = "hunk";
+      const hh = document.createElement("h4");
+      hh.appendChild(document.createTextNode(hunk.head));
+      if (state === "pending") {
+        const btns = document.createElement("span"); btns.className = "hbtns";
+        const yes = document.createElement("button"); yes.className = "hbtn yes"; yes.textContent = "✓";
+        const no = document.createElement("button"); no.className = "hbtn no"; no.textContent = "✕";
+        yes.addEventListener("click", () => { h.classList.add("h-approved"); });
+        no.addEventListener("click", () => { h.classList.add("h-rejected"); });
+        btns.append(yes, no); hh.appendChild(btns);
+      }
+      h.appendChild(hh);
+      for (const l of hunk.lines) {
+        const el = document.createElement("div"); el.className = "hl " + (l.t === "+" ? "add" : l.t === "-" ? "del" : "");
+        el.textContent = l.t === " " ? "  " + l.x : l.t + " " + l.x;
+        h.appendChild(el);
+      }
+      return h;
+    }
+    function diffCardHead(tc, diffs, state) {
       const head = document.createElement("header");
-      const diffs = (tc.content || []).filter((c) => c.type === "diff");
-      const others = (tc.content || []).filter((c) => c.type !== "diff");
       const pathEl = document.createElement("span"); pathEl.className = "path";
       pathEl.textContent = diffs.length ? diffs.map((d) => d.path).join(", ") : (tc.title || "proposed action");
       const stateEl = document.createElement("span"); stateEl.className = "state";
       stateEl.textContent = state === "pending" ? "⚑ pending" : state === "approved" ? "✓ approved" : "✕ rejected";
       head.append(pathEl, stateEl);
-      card.appendChild(head);
-
-      const mkHunk = (hunk, idx) => {
-        const h = document.createElement("div"); h.className = "hunk";
-        const hh = document.createElement("h4");
-        hh.appendChild(document.createTextNode(hunk.head));
-        if (state === "pending") {
-          const btns = document.createElement("span"); btns.className = "hbtns";
-          const yes = document.createElement("button"); yes.className = "hbtn yes"; yes.textContent = "✓";
-          const no = document.createElement("button"); no.className = "hbtn no"; no.textContent = "✕";
-          yes.addEventListener("click", () => { h.classList.add("h-approved"); });
-          no.addEventListener("click", () => { h.classList.add("h-rejected"); });
-          btns.append(yes, no); hh.appendChild(btns);
-        }
-        h.appendChild(hh);
-        for (const l of hunk.lines) {
-          const el = document.createElement("div"); el.className = "hl " + (l.t === "+" ? "add" : l.t === "-" ? "del" : "");
-          el.textContent = l.t === " " ? "  " + l.x : l.t + " " + l.x;
-          h.appendChild(el);
-        }
-        return h;
-      };
-
+      return head;
+    }
+    function diffActions(s, perm) {
+      const actions = document.createElement("div"); actions.style.cssText = "display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--border)";
+      const ok = document.createElement("button"); ok.className = "btn primary"; ok.textContent = "Approve";
+      const no = document.createElement("button"); no.className = "btn"; no.textContent = "Reject";
+      ok.addEventListener("click", () => decidePermission(s, perm, "approve"));
+      no.addEventListener("click", () => decidePermission(s, perm, "reject"));
+      actions.append(ok, no);
+      return actions;
+    }
+    function buildDiffCard(s, perm, state) {
+      const tc = perm.toolCall || {};
+      const card = document.createElement("div"); card.className = "diffcard"; card.dataset.state = state;
+      const diffs = (tc.content || []).filter((c) => c.type === "diff");
+      card.appendChild(diffCardHead(tc, diffs, state));
       if (diffs.length) {
-        for (const d of diffs) for (const hk of computeHunks(d.oldText, d.newText)) card.appendChild(mkHunk(hk));
+        for (const d of diffs) for (const hk of computeHunks(d.oldText, d.newText)) card.appendChild(diffHunkEl(hk, state));
       } else {
         // Where ACP gives only a command/tool call, render THE COMMAND — never fabricate a diff.
+        const others = (tc.content || []).filter((c) => c.type !== "diff");
         const cmd = document.createElement("div"); cmd.className = "cmdline";
         cmd.textContent = (others.map((o) => o.summary || o.command).filter(Boolean).join(" && ")) || tc.title || JSON.stringify(tc).slice(0, 300);
         card.appendChild(cmd);
       }
-
-      if (state === "pending" && perm.request_id) {
-        const actions = document.createElement("div"); actions.style.cssText = "display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--border)";
-        const ok = document.createElement("button"); ok.className = "btn primary"; ok.textContent = "Approve";
-        const no = document.createElement("button"); no.className = "btn"; no.textContent = "Reject";
-        ok.addEventListener("click", () => decidePermission(s, perm, "approve"));
-        no.addEventListener("click", () => decidePermission(s, perm, "reject"));
-        actions.append(ok, no); card.appendChild(actions);
-      }
+      if (state === "pending" && perm.request_id) card.appendChild(diffActions(s, perm));
       return card;
     }
     function decidePermission(s, perm, outcome) {
@@ -1287,7 +1383,7 @@
       s.playing = false;
       if (s.timer) clearInterval(s.timer);
       if (s.tick) clearInterval(s.tick);
-      try { s.term && s.term.dispose(); } catch {}
+      try { if (s.term) s.term.dispose(); } catch {}
       if (s.tile) s.tile.remove();
       sessions.delete(s.id);
     }
@@ -1481,6 +1577,58 @@
       if (tokEl && prevTok) tokEl.value = prevTok;
       if (tokEl && hadFocus) { tokEl.focus(); const v = tokEl.value; tokEl.value = ""; tokEl.value = v; }
     }
+    // A numbered setup step shell (done/active/pending); returns its {st, body}.
+    function setupStepShell(num, state, title, stateText, ok) {
+      const st = document.createElement("div"); st.className = "setup-step"; st.dataset.state = state;
+      const numEl = document.createElement("div"); numEl.className = "setup-num"; numEl.textContent = state === "done" ? "✓" : String(num);
+      const body = document.createElement("div"); body.className = "setup-body";
+      const t = document.createElement("div"); t.className = "setup-title"; t.textContent = title;
+      if (stateText) { const s = document.createElement("span"); s.className = "st" + (ok ? " ok" : ""); s.textContent = stateText; t.appendChild(s); }
+      body.appendChild(t); st.append(numEl, body);
+      return { st, body };
+    }
+    // Step 1 body — how to install and start the relay on this machine.
+    function fillSetupStep1(body, r) {
+      const p = document.createElement("p"); p.className = "hint"; p.style.margin = "4px 0 2px";
+      p.innerHTML = "One small server <strong>per machine</strong> (not per agent) — it runs the agents you spawn on this box. Install with Homebrew, then start it (first run creates the config and copies the token to your clipboard):";
+      body.appendChild(p);
+      body.append(cmdRow("brew install naklitechie/tap/menagerie-relay"), cmdRow("menagerie-relay serve"));
+      const alt = document.createElement("p"); alt.className = "hint"; alt.style.margin = "7px 0 0";
+      alt.innerHTML = `Always-on (starts at login, restarts itself)? <code>menagerie-relay service install</code>. Homebrew 6+ says the tap is untrusted? <code>brew trust naklitechie/tap</code> first. No Homebrew? <a href="${RELEASES_URL}" target="_blank" rel="noopener">Download the binary</a> (<code>chmod +x</code>, run as <code>./menagerie-relay</code>), or <code>go install</code>. macOS browser-downloads: <code>xattr -dr com.apple.quarantine menagerie-relay</code>.`;
+      body.appendChild(alt);
+      const foot = document.createElement("p"); foot.className = "hint"; foot.style.margin = "8px 0 0";
+      const recheck = document.createElement("button"); recheck.className = "link"; recheck.textContent = "Recheck now";
+      recheck.addEventListener("click", () => { clearTimeout(r.retryTimer); r.retries = 0; connect(r); });
+      foot.appendChild(document.createTextNode("Started it? ")); foot.appendChild(recheck); body.appendChild(foot);
+    }
+    // Step 2 body — paste the registration token and connect.
+    function fillSetupStep2(body, r, badToken) {
+      if (badToken && r.error) { const e = document.createElement("p"); e.className = "inline-error"; e.style.margin = "2px 0 0"; e.textContent = r.error; body.appendChild(e); }
+      const bh = document.createElement("p"); bh.className = "hint"; bh.style.margin = "2px 0 0";
+      bh.innerHTML = "Your token is on your clipboard from <code>serve</code> — just paste it below. (Lost it? <code>menagerie-relay token print</code> copies it again.)";
+      body.appendChild(bh);
+      body.appendChild(cmdRow("menagerie-relay token print"));
+      const rowi = document.createElement("div"); rowi.className = "row"; rowi.style.marginTop = "7px";
+      const tok = document.createElement("input"); tok.id = "localTokenInput"; tok.type = "password"; tok.placeholder = "paste token here"; tok.autocomplete = "off"; tok.spellcheck = false;
+      tok.style.cssText = "flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px";
+      const go = document.createElement("button"); go.className = "btn primary"; go.textContent = "Connect";
+      const submit = () => { const t = tok.value.trim(); if (!t) return; r.token = t; if (r.ws && r.ws.readyState === WebSocket.OPEN) { r.status = "connecting"; send(r, { type: "register", registration_token: t }); } else connect(r); persistRelays(); renderAll(); };
+      go.addEventListener("click", submit);
+      tok.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+      rowi.append(tok, go); body.appendChild(rowi);
+    }
+    // Step 3 shell — connected state, host/agent summary, and a Remove button.
+    function buildSetupStep3(r, s3, connected) {
+      const agents = (r.hello && r.hello.agents) ? r.hello.agents.length : 0;
+      const host = r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : "";
+      const summary = connected ? `${host} · ${agents} agent${agents === 1 ? "" : "s"}` : "";
+      const c = setupStepShell(3, s3, "Connected", summary, true);
+      if (connected) {
+        const rm = document.createElement("button"); rm.className = "link danger"; rm.style.marginTop = "2px"; rm.textContent = "Remove";
+        rm.addEventListener("click", () => removeRelay(r.id)); c.body.appendChild(rm);
+      }
+      return c.st;
+    }
     // The localhost relay gets a guided, self-advancing 3-step setup card.
     function buildLocalSetup(r) {
       const detected = !!r.hello, connected = r.status === "connected", badToken = r.status === "error";
@@ -1488,55 +1636,13 @@
       const s2 = connected ? "done" : (detected ? "active" : "pending");
       const s3 = connected ? "active" : "pending";
       const wrap = document.createElement("div"); wrap.className = "setup";
-      const mkStep = (num, state, title, stateText, ok) => {
-        const st = document.createElement("div"); st.className = "setup-step"; st.dataset.state = state;
-        const numEl = document.createElement("div"); numEl.className = "setup-num"; numEl.textContent = state === "done" ? "✓" : String(num);
-        const body = document.createElement("div"); body.className = "setup-body";
-        const t = document.createElement("div"); t.className = "setup-title"; t.textContent = title;
-        if (stateText) { const s = document.createElement("span"); s.className = "st" + (ok ? " ok" : ""); s.textContent = stateText; t.appendChild(s); }
-        body.appendChild(t); st.append(numEl, body);
-        return { st, body };
-      };
-      // Step 1 — start a relay on this machine
-      const a = mkStep(1, s1, "Start the relay on this machine", s1 === "active" ? "not detected" : "", false);
-      if (s1 === "active") {
-        const p = document.createElement("p"); p.className = "hint"; p.style.margin = "4px 0 2px";
-        p.innerHTML = "One small server <strong>per machine</strong> (not per agent) — it runs the agents you spawn on this box. Install with Homebrew, then start it (first run creates the config and copies the token to your clipboard):";
-        a.body.appendChild(p);
-        a.body.append(cmdRow("brew install naklitechie/tap/menagerie-relay"), cmdRow("menagerie-relay serve"));
-        const alt = document.createElement("p"); alt.className = "hint"; alt.style.margin = "7px 0 0";
-        alt.innerHTML = `Always-on (starts at login, restarts itself)? <code>menagerie-relay service install</code>. Homebrew 6+ says the tap is untrusted? <code>brew trust naklitechie/tap</code> first. No Homebrew? <a href="${RELEASES_URL}" target="_blank" rel="noopener">Download the binary</a> (<code>chmod +x</code>, run as <code>./menagerie-relay</code>), or <code>go install</code>. macOS browser-downloads: <code>xattr -dr com.apple.quarantine menagerie-relay</code>.`;
-        a.body.appendChild(alt);
-        const foot = document.createElement("p"); foot.className = "hint"; foot.style.margin = "8px 0 0";
-        const recheck = document.createElement("button"); recheck.className = "link"; recheck.textContent = "Recheck now";
-        recheck.addEventListener("click", () => { clearTimeout(r.retryTimer); r.retries = 0; connect(r); });
-        foot.appendChild(document.createTextNode("Started it? ")); foot.appendChild(recheck); a.body.appendChild(foot);
-      }
+      const a = setupStepShell(1, s1, "Start the relay on this machine", s1 === "active" ? "not detected" : "", false);
+      if (s1 === "active") fillSetupStep1(a.body, r);
       wrap.appendChild(a.st);
-      // Step 2 — paste the registration token
-      const b = mkStep(2, s2, "Paste its registration token", (s2 === "active" && !badToken) ? "relay detected" : "", true);
-      if (s2 === "active") {
-        if (badToken && r.error) { const e = document.createElement("p"); e.className = "inline-error"; e.style.margin = "2px 0 0"; e.textContent = r.error; b.body.appendChild(e); }
-        const bh = document.createElement("p"); bh.className = "hint"; bh.style.margin = "2px 0 0";
-        bh.innerHTML = "Your token is on your clipboard from <code>serve</code> — just paste it below. (Lost it? <code>menagerie-relay token print</code> copies it again.)";
-        b.body.appendChild(bh);
-        b.body.appendChild(cmdRow("menagerie-relay token print"));
-        const rowi = document.createElement("div"); rowi.className = "row"; rowi.style.marginTop = "7px";
-        const tok = document.createElement("input"); tok.id = "localTokenInput"; tok.type = "password"; tok.placeholder = "paste token here"; tok.autocomplete = "off"; tok.spellcheck = false;
-        tok.style.cssText = "flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px";
-        const go = document.createElement("button"); go.className = "btn primary"; go.textContent = "Connect";
-        const submit = () => { const t = tok.value.trim(); if (!t) return; r.token = t; if (r.ws && r.ws.readyState === WebSocket.OPEN) { r.status = "connecting"; send(r, { type: "register", registration_token: t }); } else connect(r); persistRelays(); renderAll(); };
-        go.addEventListener("click", submit);
-        tok.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
-        rowi.append(tok, go); b.body.appendChild(rowi);
-      }
+      const b = setupStepShell(2, s2, "Paste its registration token", (s2 === "active" && !badToken) ? "relay detected" : "", true);
+      if (s2 === "active") fillSetupStep2(b.body, r, badToken);
       wrap.appendChild(b.st);
-      // Step 3 — connected
-      const agents = (r.hello && r.hello.agents) ? r.hello.agents.length : 0;
-      const host = r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : "";
-      const c = mkStep(3, s3, "Connected", connected ? `${host} · ${agents} agent${agents === 1 ? "" : "s"}` : "", true);
-      if (connected) { const rm = document.createElement("button"); rm.className = "link danger"; rm.style.marginTop = "2px"; rm.textContent = "Remove"; rm.addEventListener("click", () => removeRelay(r.id)); c.body.appendChild(rm); }
-      wrap.appendChild(c.st);
+      wrap.appendChild(buildSetupStep3(r, s3, connected));
       return wrap;
     }
     function buildRelayRow(r) {
@@ -1715,29 +1821,48 @@
 
     // Hotkeys (handoff §10): n spawn · g+digit focus tile · f fullscreen · Tab cycle · Esc close/restore.
     let _gPending = false, _gTimer;
+    // Escape: composer-guard → close drill → exit fullscreen → close modals.
+    function hotkeyEscape() {
+      if (drillOpen()) {
+        // Esc returns to the grid ONLY when no composer text is pending —
+        // losing a half-written prompt is the bug that gets reported first.
+        if (composerHasText()) { flashComposer(); return; }
+        closeDrill(); return;
+      }
+      if (document.querySelector(".tile.fullscreen")) { exitFullscreen(); return; }
+      closeAllModals();
+    }
+    // The g-prefix chord: g then a digit focuses that tile. Returns true if it consumed the key.
+    function hotkeyChord(e) {
+      if (!_gPending) return false;
+      _gPending = false; clearTimeout(_gTimer);
+      if (/^[1-9]$/.test(e.key)) { focusTileByIndex(parseInt(e.key, 10) - 1); e.preventDefault(); return true; }
+      return false;
+    }
+    // Single-key grid actions (chord digits and the drill-only keys are handled
+    // separately in hotkeyGrid). Each owns its own preventDefault.
+    const GRID_KEYS = {
+      n: (e) => { openModal("spawnScrim"); e.preventDefault(); },
+      g: () => { _gPending = true; _gTimer = setTimeout(() => { _gPending = false; }, 1200); },
+      f: (e) => { toggleFullscreen(document.querySelector(".tile.focused") || tilesInOrder()[0]); e.preventDefault(); },
+      Tab: (e) => { cycleFocus(e.shiftKey ? -1 : 1); e.preventDefault(); },
+    };
+    function hotkeyEnter(e) {
+      const f = document.querySelector(".tile.focused");
+      const s = f && sessions.get(f.dataset.sid);
+      if (s && s.transport === "acp") { openDrill(s); e.preventDefault(); }
+    }
+    function hotkeyGrid(e) {
+      if (hotkeyChord(e)) return;
+      const h = GRID_KEYS[e.key];
+      if (h) { h(e); return; }
+      if (drillOpen() && (e.key === "d" || e.key === "D")) { $("rawlogBtn").click(); e.preventDefault(); return; }
+      if (e.key === "Enter") hotkeyEnter(e);
+    }
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        if (drillOpen()) {
-          // Esc returns to the grid ONLY when no composer text is pending —
-          // losing a half-written prompt is the bug that gets reported first.
-          if (composerHasText()) { flashComposer(); return; }
-          closeDrill(); return;
-        }
-        if (document.querySelector(".tile.fullscreen")) { exitFullscreen(); return; }
-        closeAllModals(); return;
-      }
+      if (e.key === "Escape") { hotkeyEscape(); return; }
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || anyModalOpen()) return;
-      if (_gPending) { _gPending = false; clearTimeout(_gTimer); if (/^[1-9]$/.test(e.key)) { focusTileByIndex(parseInt(e.key, 10) - 1); e.preventDefault(); return; } }
-      if (e.key === "n") { openModal("spawnScrim"); e.preventDefault(); }
-      else if (e.key === "g") { _gPending = true; _gTimer = setTimeout(() => { _gPending = false; }, 1200); }
-      else if (e.key === "f") { toggleFullscreen(document.querySelector(".tile.focused") || tilesInOrder()[0]); e.preventDefault(); }
-      else if (e.key === "Tab") { cycleFocus(e.shiftKey ? -1 : 1); e.preventDefault(); }
-      else if (drillOpen() && (e.key === "d" || e.key === "D")) { $("rawlogBtn").click(); e.preventDefault(); }
-      else if (e.key === "Enter") {
-        const f = document.querySelector(".tile.focused");
-        const s = f && sessions.get(f.dataset.sid);
-        if (s && s.transport === "acp") { openDrill(s); e.preventDefault(); }
-      }
+      hotkeyGrid(e);
     });
 
     // Drill-in wiring.
@@ -1771,6 +1896,12 @@
                 ingestAcpFrame(sess, { dir: "a>c", seq: 2, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "tool_call", toolCallId: "t1", title: "Bash · pytest -x", kind: "execute", status: "completed", content: [{ type: "terminal", summary: "$ pytest -x test_review.py" }] } } } });
                 ingestAcpFrame(sess, { dir: "a>c", seq: 3, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "tool_call", toolCallId: "t2", title: "Edit src/review.py", kind: "edit", status: "completed", content: [{ type: "diff", path: "src/review.py", oldText: "def run():\n    for i in range(len(items)):\n        check(i)\n", newText: "def run(verbose=True):\n    for i in range(len(items) - 1):\n        check(i, verbose)\n" }] } } } });
                 ingestAcpFrame(sess, { dir: "a>c", seq: 4, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Fixed the off-by-one in run(): the loop now stops one short of len(items), matching the invariant the test asserts." } } } } });
+                ingestAcpFrame(sess, { dir: "a>c", seq: 5, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "config_option_update", configOptions: [
+                  { id: "model", category: "model", type: "select", currentValue: "anthropic/claude-opus-4", options: [{ value: "anthropic/claude-opus-4", name: "Claude Opus 4" }, { value: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4" }] },
+                  { id: "thought_level", category: "thought_level", type: "select", currentValue: "med", options: [{ value: "low", name: "Low" }, { value: "med", name: "Medium" }, { value: "high", name: "High" }] },
+                  { id: "mode", category: "mode", type: "select", currentValue: "default", options: [{ value: "default", name: "Default" }, { value: "plan", name: "Plan" }] } ] } } } });
+                ingestAcpFrame(sess, { dir: "a>c", seq: 6, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "usage_update", used: 124000, size: 200000 } } } });
+                ingestAcpFrame(sess, { dir: "a>c", seq: 7, frame: { jsonrpc: "2.0", method: "session/update", params: { sessionId: "x", update: { sessionUpdate: "_menagerie/turn_usage", usage: { inputTokens: 20960, outputTokens: 412, totalTokens: 21372 } } } } });
                 sess.acp.pendingPerm = { request_id: "pr-9f2c41ab", options: [{ optionId: "allow-once", name: "Allow once", kind: "allow_once" }, { optionId: "reject-once", name: "Reject", kind: "reject_once" }],
                   toolCall: { toolCallId: "t3", title: "Edit main.py", kind: "edit", content: [{ type: "diff", path: "main.py", oldText: "x = 1\ny = 2\nz = x + y\nprint(z)\n", newText: "x = 1\ny = 2\nz = x * y\nprint(f\"{z}\")\n" }] } };
                 setSessionStatus(sess, "needs_input");
