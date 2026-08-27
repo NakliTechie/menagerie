@@ -10,9 +10,13 @@ Spec: [`docs/design/v1.2-spec.md`](docs/design/v1.2-spec.md) (locked 2026-08-27)
 | C2 relay subtree kill | **complete** (2026-08-27) — signal{kill,subtree} kills the session + all descendants leaf-first (post-order snapshot under s.mu), each emitting exited; authorized by the parent's token. Tests: subtree-kill-exits-all (3 sessions) + subtreeLeafFirst ordering unit. |
 | §7 UX gate | **locked** (v1.2-ux-reference.md) |
 | C3 browser tree model + sidebar tree | **complete** (2026-08-27) — parentId on sessions (from spawned + SessionInfo); childrenIndex(); collapsible sidebar tree (disclosure triangle, ⑃count pill, orphan ⤺ marker, per-parent collapse persisted); Grid/Tree topbar toggle (auto-on once a session has children) + t hotkey; fakeTree() demo seam. Browser-verified: parent+4 workers nest, collapse hides them. |
-| C4 grid grouping + spawn-child + kill modal | not-started |
-| C5 re-attach rebuilds tree | not-started |
-| C6 close-out (+ fresh-context forward-pass before merge) | not-started |
+| C4 grid grouping + spawn-child + kill modal | **complete** (2026-08-27) — tree-view grid grouping (indent + left band, collapse hides subtree, dirty-checked so streaming never reorders); ⑃ spawn-child affordance (parent chip, cwd inherited, parent_session_id in the frame); in-app subtree-kill modal (kill-only vs kill-subtree); t/c/←→ keys. Browser-verified via demo seams. |
+| C5 re-attach rebuilds tree | **complete** (2026-08-27) — parentId flows via SessionInfo (C3); orphan (parent not live / exited / self-parent / cycle) renders at root with ⤺ marker, never vanishes; child_spawned explicit no-op. Verified via fakeOrphan + fakeCycle seams. |
+| C6 close-out | **complete** (2026-08-27) — VISION/README v1.2-shipped, relay 0.6.0; fresh-context forward-pass (2 agents) — relay clean, browser 2 High (grid thrash, cycle guard) + 1 Med fixed & re-verified; whole-project gate GREEN (go test -race, fixtures 22/22, lint 0); **merged to main + pushed (`bf87ae2`)**. Report: plan/forward-pass-2026-08-27-v1.2.md. |
+
+**v1.2.0 shipped to `main` 2026-08-27.** Deferred to v1.2.x: the coordination layer
+(`wait` / atomic prompt+wait / self-reported status — spec §8), cross-relay child-spawn,
+multi-workspace tabs.
 
 ---
 
