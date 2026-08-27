@@ -316,6 +316,18 @@
     #keybar .kb.mod.armed { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
     #keybar .sep { flex: 0 0 auto; width: 1px; align-self: center; height: 22px; background: var(--border); margin: 0 2px; }
     body.has-keybar .main { padding-bottom: 58px; }   /* keep the bar off the last tile row */
+
+    /* ---- first-run tour: a spotlight over a real control + a coach card ---- */
+    .tour-layer { position: fixed; inset: 0; z-index: 200; }
+    .tour-layer::before { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 62%, transparent); }
+    .tour-spotlight { position: absolute; border-radius: 10px; box-shadow: 0 0 0 3px var(--accent), 0 0 0 9999px color-mix(in srgb, var(--bg) 62%, transparent); transition: top .18s ease, left .18s ease, width .18s ease, height .18s ease; pointer-events: none; }
+    .tour-card { position: absolute; visibility: hidden; width: min(340px, calc(100vw - 24px)); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.28); }
+    .tour-progress { margin: 0 0 6px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .tour-card h2 { margin: 0 0 6px; font-size: 16px; }
+    .tour-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .tour-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+    .tour-skip { margin-right: auto; color: var(--faint); }
+    @media (max-width: 520px) { .tour-card { padding: 12px; } .tour-actions { flex-wrap: wrap; } }
   </style>
 </head>
 <body>
@@ -422,6 +434,7 @@
           <p class="help-step-lede"><strong>3 · Spawn.</strong> Hit <strong>+ Spawn</strong>, pick an agent (or <em>custom</em> → any command, e.g. <code>grok</code>), and go — Menagerie runs it and streams its terminal here. <strong>◐</strong> switches light / dark.</p>
         </div>
         <div class="help-links">
+          <button class="btn primary" id="helpTourBtn" type="button">Take the quick tour</button>
           <a class="btn" href="docs/walkthrough/index.html" target="_blank" rel="noopener">Walkthrough</a>
           <a class="btn" href="https://github.com/NakliTechie/menagerie" target="_blank" rel="noopener">Source</a>
           <a class="btn" href="https://menagerie.naklitechie.com" target="_blank" rel="noopener">Live site</a>
@@ -1716,18 +1729,141 @@
     function toggleTheme() { const next = currentTheme() === "dark" ? "light" : "dark"; try { localStorage.setItem(THEME_KEY, next); } catch {} applyTheme(next); }
     function initTheme() { let m = "light"; try { m = localStorage.getItem(THEME_KEY) || "light"; } catch {} applyTheme(m); }
 
-    // ===== help / about ===============================================
-    const HELP_SEEN_KEY = "menagerie-help-seen";
-    // First visit: show the help modal (above the workspace overlay) so a new user knows what this is.
-    function maybeFirstVisitHelp() {
-      let seen = false; try { seen = !!localStorage.getItem(HELP_SEEN_KEY); } catch {}
-      if (!seen) { openModal("helpScrim"); try { localStorage.setItem(HELP_SEEN_KEY, "1"); } catch {} }
+    // ===== first-run tour (onboarding walkthrough) ====================
+    // A spotlight over a real control + a coach card. Runs once on first visit,
+    // replayable from Help. Ported to Menagerie's tokens from the Slate pattern.
+    const TOUR_KEY = "menagerie.v1.tour-complete";
+    const TOUR_STEPS = [
+      { target: "#sidebar", title: "Relays run your agents", body: "Your relays and sessions live in this sidebar. A relay is a small server you run once per machine — it runs and streams the coding agents you spawn on that box. No NakliTechie server, no account: nothing leaves your machines." },
+      { target: "#settingsBtn", title: "Connect a relay", body: "Open Settings to add a relay and paste its registration token. The localhost relay walks you through install → token → connected." },
+      { target: "#spawnBtn", title: "Spawn an agent", body: "Describe a task and pick an agent and model. Each agent gets its own session — Git-backed ones get their own branch and worktree." },
+      { target: "#grid, #emptyState", title: "Your fleet, at a glance", body: "Every agent is a live tile — working, needs-you, or idle. Open one to drill in: transcript, tool calls, diff review, and the instrument bar (model · context · tokens)." },
+      { target: "#themeBtn", title: "Make it yours", body: "Switch light / dark any time. Your choice is remembered on this machine." },
+      { target: "#helpBtn", title: "Help is always here", body: "The full walkthrough, install steps, and this tour all live behind Help. Replay the tour whenever you like." },
+    ];
+    const tour = { layer: null, i: 0, steps: TOUR_STEPS, prevFocus: null };
+    const tourClamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    // Resolve a step's target (a comma selector list) to the first VISIBLE element,
+    // falling back to the first that merely exists — robust to state (empty grid →
+    // #emptyState) and to a sidebar that hasn't settled its layout yet.
+    function tourResolve(target) {
+      let firstExisting = null;
+      for (const sel of target.split(",")) {
+        const el = document.querySelector(sel.trim());
+        if (!el) continue;
+        if (!firstExisting) firstExisting = el;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return el;
+      }
+      return firstExisting;
+    }
+    function tourCurrentTarget() { return tourResolve(tour.steps[tour.i].target) || document.body; }
+    // Place the card on whichever side of the target has room (below → above → left → right → bottom).
+    function tourCardPlacement(rect, card) {
+      const gap = 16, m = 12;
+      if (rect.bottom + gap + card.height <= innerHeight - m) return { top: rect.bottom + gap, left: rect.left + rect.width / 2 - card.width / 2 };
+      if (rect.top - gap - card.height >= m) return { top: rect.top - gap - card.height, left: rect.left + rect.width / 2 - card.width / 2 };
+      if (rect.left - gap - card.width >= m) return { top: rect.top + rect.height / 2 - card.height / 2, left: rect.left - gap - card.width };
+      if (rect.right + gap + card.width <= innerWidth - m) return { top: rect.top + rect.height / 2 - card.height / 2, left: rect.right + gap };
+      return { top: innerHeight - card.height - m, left: innerWidth / 2 - card.width / 2 };
+    }
+    function tourPosition() {
+      if (!tour.layer) return;
+      const target = tourCurrentTarget();
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const rect = target.getBoundingClientRect(), pad = 6;
+      const spot = tour.layer.querySelector(".tour-spotlight");
+      spot.style.top = Math.max(4, rect.top - pad) + "px";
+      spot.style.left = Math.max(4, rect.left - pad) + "px";
+      spot.style.width = Math.max(24, Math.min(innerWidth - 8, rect.width + pad * 2)) + "px";
+      spot.style.height = Math.max(24, Math.min(innerHeight - 8, rect.height + pad * 2)) + "px";
+      const card = tour.layer.querySelector(".tour-card"), cr = card.getBoundingClientRect(), m = 12;
+      const pos = tourCardPlacement(rect, cr);
+      card.style.top = tourClamp(pos.top, m, innerHeight - cr.height - m) + "px";
+      card.style.left = tourClamp(pos.left, m, innerWidth - cr.width - m) + "px";
+      card.style.visibility = "visible";
+    }
+    function tourRenderStep() {
+      if (!tour.layer) return;
+      const step = tour.steps[tour.i];
+      tour.layer.querySelector(".tour-progress").textContent = `Quick tour · ${tour.i + 1} of ${tour.steps.length}`;
+      tour.layer.querySelector(".tour-title").textContent = step.title;
+      tour.layer.querySelector(".tour-body").textContent = step.body;
+      tour.layer.querySelector(".tour-back").disabled = tour.i === 0;
+      tour.layer.querySelector(".tour-next").textContent = tour.i === tour.steps.length - 1 ? "Finish" : "Next";
+      tour.layer.querySelector(".tour-card").style.visibility = "hidden";
+      // Position after paint, then once more when layout has settled — the sidebar
+      // and grid can still be sizing on first run, which would misplace the spot.
+      requestAnimationFrame(() => { tourPosition(); if (tour.layer) tour.layer.querySelector(".tour-next").focus(); });
+      setTimeout(tourPosition, 80);
+    }
+    function tourNext() { if (tour.i < tour.steps.length - 1) { tour.i++; tourRenderStep(); } else tourFinish(); }
+    function tourBack() { if (tour.i > 0) { tour.i--; tourRenderStep(); } }
+    function tourClose() {
+      if (!tour.layer) return;
+      const old = tour.layer; tour.layer = null;
+      window.removeEventListener("resize", tourPosition);
+      document.removeEventListener("keydown", tourKeydown, true);
+      old.remove();
+      if (tour.prevFocus && tour.prevFocus.isConnected) tour.prevFocus.focus();
+      tour.prevFocus = null;
+    }
+    function tourFinish() { try { localStorage.setItem(TOUR_KEY, "1"); } catch {} tourClose(); }
+    function tourKeydown(e) {
+      if (!tour.layer) return;
+      e.stopPropagation();
+      if (e.key === "Escape") { e.preventDefault(); tourFinish(); return; }
+      if (e.key === "ArrowRight") { e.preventDefault(); tourNext(); return; }
+      if (e.key === "ArrowLeft") { e.preventDefault(); tourBack(); return; }
+      if (e.key === "Enter" || e.key === " ") {
+        const b = e.target.closest && e.target.closest(".tour-actions button");
+        if (b) { e.preventDefault(); b.click(); }
+      }
+    }
+    function showTour(opts) {
+      const force = !!(opts && opts.force);
+      let done = false; try { done = !!localStorage.getItem(TOUR_KEY); } catch {}
+      if (tour.layer || (!force && done)) return false;
+      tour.prevFocus = document.activeElement; tour.i = 0;
+      // Keep every step whose target exists in the DOM (resolve handles transient
+      // zero-size); only a genuinely absent target drops a step.
+      tour.steps = TOUR_STEPS.filter((s) => tourResolve(s.target));
+      if (!tour.steps.length) tour.steps = TOUR_STEPS;
+      const layer = document.createElement("div"); layer.className = "tour-layer";
+      layer.innerHTML = `<div class="tour-spotlight" aria-hidden="true"></div>
+        <section class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body">
+          <div class="tour-progress"></div>
+          <h2 class="tour-title" id="tour-title"></h2>
+          <p class="tour-body" id="tour-body" aria-live="polite"></p>
+          <div class="tour-actions">
+            <button class="btn ghost tour-skip" type="button">Skip</button>
+            <button class="btn tour-back" type="button">Back</button>
+            <button class="btn primary tour-next" type="button">Next</button>
+          </div>
+        </section>`;
+      document.body.appendChild(layer); tour.layer = layer;
+      layer.querySelector(".tour-skip").addEventListener("click", tourFinish);
+      layer.querySelector(".tour-back").addEventListener("click", tourBack);
+      layer.querySelector(".tour-next").addEventListener("click", tourNext);
+      window.addEventListener("resize", tourPosition);
+      document.addEventListener("keydown", tourKeydown, true);
+      tourRenderStep();
+      return true;
+    }
+    // First visit: start the tour once, but only after any blocking overlay
+    // (workspace picker, help) is dismissed — never spotlight behind a scrim.
+    function maybeFirstRunTour() {
+      let done = false; try { done = !!localStorage.getItem(TOUR_KEY); } catch {}
+      if (done) return;
+      if (anyModalOpen()) { setTimeout(maybeFirstRunTour, 500); return; }
+      showTour();
     }
 
     // ===== wiring =====================================================
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
     $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
+    $("helpTourBtn").addEventListener("click", () => { closeModal("helpScrim"); setTimeout(() => showTour({ force: true }), 60); });
     $("themeBtn").addEventListener("click", toggleTheme);
     document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest(".copybtn"); if (b && b.dataset.cmd) { e.preventDefault(); copyText(b.dataset.cmd, b); } });
     // ☰ toggles the sidebar: a persistent collapse on desktop, an off-canvas drawer on mobile.
@@ -1930,7 +2066,9 @@
     initTheme();
     renderAll();
     initWorkspace();
-    maybeFirstVisitHelp();
+    // First run: the guided tour is the welcome (it waits out the workspace
+    // overlay). The Help modal stays one click away behind ? and its tour button.
+    maybeFirstRunTour();
   </script>
 </body>
 </html>
