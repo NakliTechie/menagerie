@@ -9,8 +9,15 @@
 !/icon-180.png
 !/icon-192.png
 !/icon-512.png
-# Re-include only docs/walkthrough/** (the user-facing guide + its screenshots).
+# Re-include only docs/walkthrough/** (the legacy getting-started + its screenshots).
 !/docs
 /docs/*
 !/docs/walkthrough
 !/docs/walkthrough/**
+# Re-include the searchable feature guide (built artifact + its screenshots only —
+# never the generator .py sources).
+!/guide
+/guide/*
+!/guide/index.html
+!/guide/screenshots
+!/guide/screenshots/**

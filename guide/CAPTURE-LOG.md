@@ -1,0 +1,44 @@
+# Menagerie guide — capture log
+
+10/10 routes ok.
+
+- **workspace-picker** — ok (205 KB) · 2 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+- **first-run-tour** — ok (145 KB) · 4 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **help-about** — ok (414 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **relay-setup** — ok (281 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **spawn-dialog** — ok (254 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **fleet-grid** — ok (189 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **drill-instrument** — ok (178 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **raw-event-log** — ok (178 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **fleet-grid-dark** — ok (185 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`
+- **drill-instrument-dark** — ok (176 KB) · 3 console
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.`
+    - `WebSocket connection to 'ws://127.0.0.1:7878/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED`

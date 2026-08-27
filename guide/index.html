@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Menagerie — Guide</title>
+<style>
+  :root { --bg: #f9f9f8; --panel: #ffffff; --panel2: #f1f1ee; --elev: #ebebe6; --border: #e2e1db; --text: #1c1815; --muted: #6b6962; --faint: #9b988f; --accent: #8b3a1f; --on-accent: #ffffff; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --radius: 12px; --shadow: 0 8px 30px rgba(0,0,0,.12); }
+  :root[data-theme="dark"] { --bg: #1a2848; --panel: #2a3858; --panel2: #223150; --elev: #34456a; --border: #3a4a6e; --text: #f4ecd8; --muted: #b4bacb; --faint: #8a90a8; --accent: #e0573a; --on-accent: #ffffff; --shadow: 0 8px 30px rgba(0,0,0,.4); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1a2848; --panel: #2a3858; --panel2: #223150; --elev: #34456a; --border: #3a4a6e; --text: #f4ecd8; --muted: #b4bacb; --faint: #8a90a8; --accent: #e0573a; --on-accent: #ffffff; --shadow: 0 8px 30px rgba(0,0,0,.4); } }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 90px; }
+  body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.55; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  header.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .top-inner { max-width: 1080px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 18px; } .brand span { color: var(--accent); }
+  .search { flex: 1; min-width: 180px; }
+  .search input { width: 100%; padding: 9px 13px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); color: var(--text); font-size: 14px; font-family: inherit; outline: none; }
+  .search input:focus { border-color: var(--accent); }
+  .themebtn { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 9px; padding: 8px 11px; cursor: pointer; font-size: 15px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 26px 20px 80px; }
+  .lede { font-size: 16px; color: var(--muted); max-width: 720px; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 8px; }
+  nav.toc a { font-size: 13px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 20px; color: var(--muted); }
+  nav.toc a:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+  .feat { margin-top: 34px; }
+  .sec-head h2 { margin: 0 0 4px; font-size: 21px; }
+  .sec-intro { margin: 0 0 16px; color: var(--muted); font-size: 14px; max-width: 680px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+  .card { margin: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .card.hidden { display: none; }
+  .shot { display: block; width: 100%; padding: 0; border: 0; background: var(--panel-2); cursor: zoom-in; }
+  .shot img { display: block; width: 100%; height: auto; max-width: 100%; border-bottom: 1px solid var(--border); }
+  figcaption { padding: 13px 15px 16px; }
+  figcaption h3 { margin: 0 0 5px; font-size: 15px; }
+  figcaption p { margin: 0; font-size: 13px; color: var(--muted); }
+  .nomatch { display: none; color: var(--muted); padding: 40px 0; text-align: center; }
+  .nomatch.show { display: block; }
+  footer { max-width: 1080px; margin: 0 auto; padding: 30px 20px; color: var(--faint); font-size: 13px; border-top: 1px solid var(--border); }
+  /* lightbox */
+  .lb { position: fixed; inset: 0; z-index: 50; display: none; background: rgba(0,0,0,.86); }
+  .lb.open { display: flex; flex-direction: column; }
+  .lb-bar { display: flex; align-items: center; gap: 14px; padding: 12px 16px; color: #eee; font-size: 13px; }
+  .lb-pos { margin-right: auto; opacity: .85; }
+  .lb-btn { background: rgba(255,255,255,.12); color: #fff; border: 0; border-radius: 8px; width: 44px; height: 44px; font-size: 18px; cursor: pointer; }
+  .lb-btn:hover { background: rgba(255,255,255,.22); }
+  .lb-stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 8px 8px; min-height: 0; position: relative; }
+  .lb-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+  .lb-side { position: absolute; top: 0; bottom: 0; width: 24%; border: 0; background: transparent; cursor: pointer; color: transparent; }
+  .lb-side.prev { left: 0; } .lb-side.next { right: 0; }
+  .lb-cap { color: #eee; padding: 4px 18px 18px; text-align: center; }
+  .lb-cap b { display: block; font-size: 15px; margin-bottom: 3px; }
+  .lb-cap span { font-size: 13px; opacity: .8; }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .lb-side { width: 30%; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">Menagerie<span>.</span> Guide</div>
+    <div class="search"><input id="q" type="search" placeholder="Search features…  ( / to focus )" autocomplete="off"></div>
+    <button class="themebtn" id="theme" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+<main>
+  <p class="lede">A browser-native console for running and watching fleets of coding agents — Claude Code, Codex, opencode, Aider and friends — side by side in one window. This guide walks every screen.</p>
+  <nav class="toc"><a href="#getting-started">Getting started</a><a href="#connect-spawn">Connect &amp; spawn</a><a href="#watch-your-fleet">Watch your fleet</a><a href="#drill-into-an-agent">Drill into an agent</a></nav>
+  
+      <section id="getting-started" class="feat">
+        <div class="sec-head"><h2>Getting started</h2><p class="sec-intro">Menagerie is a browser tab that runs and watches fleets of coding agents. First run walks you in.</p></div>
+        <div class="grid">
+        <figure class="card" data-search="getting started pick a workspace first run asks for a folder to own your relays and trajectories — nothing leaves your machine. skip for an in-memory session. 01-workspace-picker" data-idx="0" data-section="Getting started">
+          <button class="shot" data-full="screenshots/01-workspace-picker.png" data-title="Pick a workspace" data-desc="First run asks for a folder to own your relays and trajectories — nothing leaves your machine. Skip for an in-memory session." data-role="Getting started" aria-label="Open Pick a workspace">
+            <img loading="lazy" src="screenshots/01-workspace-picker.png" alt="Pick a workspace">
+          </button>
+          <figcaption><h3>Pick a workspace</h3><p>First run asks for a folder to own your relays and trajectories — nothing leaves your machine. Skip for an in-memory session.</p></figcaption>
+        </figure>
+        <figure class="card" data-search="getting started the first-run tour a six-step spotlight walkthrough greets new users — relays, connect, spawn, the fleet board, theme, help. replayable any time from help. 02-first-run-tour" data-idx="1" data-section="Getting started">
+          <button class="shot" data-full="screenshots/02-first-run-tour.png" data-title="The first-run tour" data-desc="A six-step spotlight walkthrough greets new users — relays, connect, spawn, the fleet board, theme, help. Replayable any time from Help." data-role="Getting started" aria-label="Open The first-run tour">
+            <img loading="lazy" src="screenshots/02-first-run-tour.png" alt="The first-run tour">
+          </button>
+          <figcaption><h3>The first-run tour</h3><p>A six-step spotlight walkthrough greets new users — relays, connect, spawn, the fleet board, theme, help. Replayable any time from Help.</p></figcaption>
+        </figure>
+        <figure class="card" data-search="getting started help &amp; about what menagerie is and how to install a relay, one click behind the ? button — including the ‘take the quick tour’ replay. 03-help-about" data-idx="2" data-section="Getting started">
+          <button class="shot" data-full="screenshots/03-help-about.png" data-title="Help &amp; about" data-desc="What Menagerie is and how to install a relay, one click behind the ? button — including the ‘Take the quick tour’ replay." data-role="Getting started" aria-label="Open Help &amp; about">
+            <img loading="lazy" src="screenshots/03-help-about.png" alt="Help &amp; about">
+          </button>
+          <figcaption><h3>Help &amp; about</h3><p>What Menagerie is and how to install a relay, one click behind the ? button — including the ‘Take the quick tour’ replay.</p></figcaption>
+        </figure></div>
+      </section>
+      <section id="connect-spawn" class="feat">
+        <div class="sec-head"><h2>Connect &amp; spawn</h2><p class="sec-intro">A relay is a small server you run once per machine; it runs the agents you spawn from here.</p></div>
+        <div class="grid">
+        <figure class="card" data-search="connect &amp; spawn connect a relay settings lists the localhost relay as a self-advancing checklist: start it, paste the token, connected. add remote relays by url too. 04-relay-setup" data-idx="3" data-section="Connect &amp; spawn">
+          <button class="shot" data-full="screenshots/04-relay-setup.png" data-title="Connect a relay" data-desc="Settings lists the localhost relay as a self-advancing checklist: start it, paste the token, connected. Add remote relays by URL too." data-role="Connect &amp; spawn" aria-label="Open Connect a relay">
+            <img loading="lazy" src="screenshots/04-relay-setup.png" alt="Connect a relay">
+          </button>
+          <figcaption><h3>Connect a relay</h3><p>Settings lists the localhost relay as a self-advancing checklist: start it, paste the token, connected. Add remote relays by URL too.</p></figcaption>
+        </figure>
+        <figure class="card" data-search="connect &amp; spawn spawn an agent describe a task, pick an agent and model (or a custom command). acp-capable agents default to a structured session; git-backed work gets its own branch and worktree. 05-spawn-dialog" data-idx="4" data-section="Connect &amp; spawn">
+          <button class="shot" data-full="screenshots/05-spawn-dialog.png" data-title="Spawn an agent" data-desc="Describe a task, pick an agent and model (or a custom command). ACP-capable agents default to a structured session; Git-backed work gets its own branch and worktree." data-role="Connect &amp; spawn" aria-label="Open Spawn an agent">
+            <img loading="lazy" src="screenshots/05-spawn-dialog.png" alt="Spawn an agent">
+          </button>
+          <figcaption><h3>Spawn an agent</h3><p>Describe a task, pick an agent and model (or a custom command). ACP-capable agents default to a structured session; Git-backed work gets its own branch and worktree.</p></figcaption>
+        </figure></div>
+      </section>
+      <section id="watch-your-fleet" class="feat">
+        <div class="sec-head"><h2>Watch your fleet</h2><p class="sec-intro">The Kanban-free board keeps every agent legible — status derived from live session, PR, and CI facts.</p></div>
+        <div class="grid">
+        <figure class="card" data-search="watch your fleet your fleet, at a glance every agent is a live tile — working, needs-you, rate-limited, or idle. pty terminals and structured streams sit side by side on one board. 06-fleet-grid" data-idx="5" data-section="Watch your fleet">
+          <button class="shot" data-full="screenshots/06-fleet-grid.png" data-title="Your fleet, at a glance" data-desc="Every agent is a live tile — working, needs-you, rate-limited, or idle. PTY terminals and structured streams sit side by side on one board." data-role="Watch your fleet" aria-label="Open Your fleet, at a glance">
+            <img loading="lazy" src="screenshots/06-fleet-grid.png" alt="Your fleet, at a glance">
+          </button>
+          <figcaption><h3>Your fleet, at a glance</h3><p>Every agent is a live tile — working, needs-you, rate-limited, or idle. PTY terminals and structured streams sit side by side on one board.</p></figcaption>
+        </figure>
+        <figure class="card" data-search="watch your fleet dark theme the whole console in the rangrez ‘kutch bhunga’ dark palette. the topbar toggle switches light / dark live and remembers your choice. 09-fleet-grid-dark" data-idx="6" data-section="Watch your fleet">
+          <button class="shot" data-full="screenshots/09-fleet-grid-dark.png" data-title="Dark theme" data-desc="The whole console in the Rangrez ‘Kutch Bhunga’ dark palette. The topbar toggle switches light / dark live and remembers your choice." data-role="Watch your fleet" aria-label="Open Dark theme">
+            <img loading="lazy" src="screenshots/09-fleet-grid-dark.png" alt="Dark theme">
+          </button>
+          <figcaption><h3>Dark theme</h3><p>The whole console in the Rangrez ‘Kutch Bhunga’ dark palette. The topbar toggle switches light / dark live and remembers your choice.</p></figcaption>
+        </figure></div>
+      </section>
+      <section id="drill-into-an-agent" class="feat">
+        <div class="sec-head"><h2>Drill into an agent</h2><p class="sec-intro">One task, one agent, one isolated workspace — with the full transcript, diffs, and instruments attached.</p></div>
+        <div class="grid">
+        <figure class="card" data-search="drill into an agent drill into an agent open a tile for the full session: the instrument bar (model · context gauge · thinking · tokens), transcript, tool calls, and diff review — approve or reject each hunk. 07-drill-instrument" data-idx="7" data-section="Drill into an agent">
+          <button class="shot" data-full="screenshots/07-drill-instrument.png" data-title="Drill into an agent" data-desc="Open a tile for the full session: the instrument bar (model · context gauge · thinking · tokens), transcript, tool calls, and diff review — approve or reject each hunk." data-role="Drill into an agent" aria-label="Open Drill into an agent">
+            <img loading="lazy" src="screenshots/07-drill-instrument.png" alt="Drill into an agent">
+          </button>
+          <figcaption><h3>Drill into an agent</h3><p>Open a tile for the full session: the instrument bar (model · context gauge · thinking · tokens), transcript, tool calls, and diff review — approve or reject each hunk.</p></figcaption>
+        </figure>
+        <figure class="card" data-search="drill into an agent the raw event log press d to reveal exactly what crossed the wire — the jsonl of every frame. when the render layer doesn’t understand a frame, you still can. 08-raw-event-log" data-idx="8" data-section="Drill into an agent">
+          <button class="shot" data-full="screenshots/08-raw-event-log.png" data-title="The raw event log" data-desc="Press d to reveal exactly what crossed the wire — the JSONL of every frame. When the render layer doesn’t understand a frame, you still can." data-role="Drill into an agent" aria-label="Open The raw event log">
+            <img loading="lazy" src="screenshots/08-raw-event-log.png" alt="The raw event log">
+          </button>
+          <figcaption><h3>The raw event log</h3><p>Press d to reveal exactly what crossed the wire — the JSONL of every frame. When the render layer doesn’t understand a frame, you still can.</p></figcaption>
+        </figure>
+        <figure class="card" data-search="drill into an agent drill-in, dark the per-agent instrument panel and diff review in dark theme — the same structured surface, different glass. 10-drill-instrument-dark" data-idx="9" data-section="Drill into an agent">
+          <button class="shot" data-full="screenshots/10-drill-instrument-dark.png" data-title="Drill-in, dark" data-desc="The per-agent instrument panel and diff review in dark theme — the same structured surface, different glass." data-role="Drill into an agent" aria-label="Open Drill-in, dark">
+            <img loading="lazy" src="screenshots/10-drill-instrument-dark.png" alt="Drill-in, dark">
+          </button>
+          <figcaption><h3>Drill-in, dark</h3><p>The per-agent instrument panel and diff review in dark theme — the same structured surface, different glass.</p></figcaption>
+        </figure></div>
+      </section>
+  <div class="nomatch" id="nomatch">No features match that search.</div>
+</main>
+<footer>10 screens · a build artifact — regenerate with <code>guide/regenerate.sh</code>, never hand-edited · <a href="../index.html">Open Menagerie →</a></footer>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+  <div class="lb-bar">
+    <span class="lb-pos" id="lbpos"></span>
+    <button class="lb-btn" id="lbprev" aria-label="Previous">‹</button>
+    <button class="lb-btn" id="lbnext" aria-label="Next">›</button>
+    <button class="lb-btn" id="lbclose" aria-label="Close">×</button>
+  </div>
+  <div class="lb-stage" id="lbstage">
+    <button class="lb-side prev" id="lbprevz" aria-label="Previous"></button>
+    <img id="lbimg" alt="">
+    <button class="lb-side next" id="lbnextz" aria-label="Next"></button>
+  </div>
+  <div class="lb-cap"><b id="lbtitle"></b><span id="lbdesc"></span></div>
+</div>
+
+<script>
+const ORDER = [{"src": "screenshots/01-workspace-picker.png", "title": "Pick a workspace", "desc": "First run asks for a folder to own your relays and trajectories — nothing leaves your machine. Skip for an in-memory session.", "role": "Getting started"}, {"src": "screenshots/02-first-run-tour.png", "title": "The first-run tour", "desc": "A six-step spotlight walkthrough greets new users — relays, connect, spawn, the fleet board, theme, help. Replayable any time from Help.", "role": "Getting started"}, {"src": "screenshots/03-help-about.png", "title": "Help & about", "desc": "What Menagerie is and how to install a relay, one click behind the ? button — including the ‘Take the quick tour’ replay.", "role": "Getting started"}, {"src": "screenshots/04-relay-setup.png", "title": "Connect a relay", "desc": "Settings lists the localhost relay as a self-advancing checklist: start it, paste the token, connected. Add remote relays by URL too.", "role": "Connect & spawn"}, {"src": "screenshots/05-spawn-dialog.png", "title": "Spawn an agent", "desc": "Describe a task, pick an agent and model (or a custom command). ACP-capable agents default to a structured session; Git-backed work gets its own branch and worktree.", "role": "Connect & spawn"}, {"src": "screenshots/06-fleet-grid.png", "title": "Your fleet, at a glance", "desc": "Every agent is a live tile — working, needs-you, rate-limited, or idle. PTY terminals and structured streams sit side by side on one board.", "role": "Watch your fleet"}, {"src": "screenshots/09-fleet-grid-dark.png", "title": "Dark theme", "desc": "The whole console in the Rangrez ‘Kutch Bhunga’ dark palette. The topbar toggle switches light / dark live and remembers your choice.", "role": "Watch your fleet"}, {"src": "screenshots/07-drill-instrument.png", "title": "Drill into an agent", "desc": "Open a tile for the full session: the instrument bar (model · context gauge · thinking · tokens), transcript, tool calls, and diff review — approve or reject each hunk.", "role": "Drill into an agent"}, {"src": "screenshots/08-raw-event-log.png", "title": "The raw event log", "desc": "Press d to reveal exactly what crossed the wire — the JSONL of every frame. When the render layer doesn’t understand a frame, you still can.", "role": "Drill into an agent"}, {"src": "screenshots/10-drill-instrument-dark.png", "title": "Drill-in, dark", "desc": "The per-agent instrument panel and diff review in dark theme — the same structured surface, different glass.", "role": "Drill into an agent"}];
+// ---- theme (remembered) ----
+try { const t = localStorage.getItem('menagerie-guide-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch {}
+document.getElementById('theme').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = dark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('menagerie-guide-theme', next); } catch {}
+});
+// ---- inline search ----
+const q = document.getElementById('q'), cards = [...document.querySelectorAll('.card')], nomatch = document.getElementById('nomatch');
+function filter() {
+  const s = q.value.trim().toLowerCase();
+  let any = false;
+  for (const c of cards) { const hit = !s || c.dataset.search.includes(s); c.classList.toggle('hidden', !hit); if (hit) any = true; }
+  for (const sec of document.querySelectorAll('.feat')) {
+    const vis = [...sec.querySelectorAll('.card')].some(c => !c.classList.contains('hidden'));
+    sec.style.display = vis ? '' : 'none';
+  }
+  nomatch.classList.toggle('show', !any);
+}
+q.addEventListener('input', filter);
+document.addEventListener('keydown', e => {
+  if (lb.classList.contains('open')) return;
+  if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+  else if (e.key === 'Escape' && document.activeElement === q) { q.value = ''; filter(); q.blur(); }
+});
+// ---- lightbox with full navigation ----
+const lb = document.getElementById('lb'), lbimg = document.getElementById('lbimg');
+const lbtitle = document.getElementById('lbtitle'), lbdesc = document.getElementById('lbdesc'), lbpos = document.getElementById('lbpos');
+let idx = 0, scrollY = 0;
+function visibleIdxs() { return cards.map((c,i)=>({c,i})).filter(o=>!o.c.classList.contains('hidden')).map(o=>parseInt(o.c.dataset.idx,10)); }
+function show(i) {
+  const vis = visibleIdxs(); if (!vis.length) return;
+  if (!vis.includes(i)) i = vis[0];
+  idx = i; const it = ORDER[i];
+  lbimg.src = it.src; lbimg.alt = it.title;
+  lbtitle.textContent = it.title; lbdesc.textContent = it.desc;
+  lbpos.textContent = it.role + ' — ' + (vis.indexOf(i)+1) + '/' + vis.length;
+}
+function step(d) { const vis = visibleIdxs(); const at = vis.indexOf(idx); if (at < 0) return show(vis[0]); const nx = vis[(at + d + vis.length) % vis.length]; show(nx); }
+function sectionJump(d) {
+  const vis = visibleIdxs(); const curSec = ORDER[idx].role;
+  if (d > 0) { for (const i of vis) if (ORDER[i].role !== curSec && i > idx) return show(i); return show(vis[0]); }
+  const seen = {};
+  for (const i of vis) { if (!(ORDER[i].role in seen)) { seen[ORDER[i].role] = i; } }
+  const roles = Object.keys(seen); const ci = roles.indexOf(curSec);
+  return show(seen[roles[(ci - 1 + roles.length) % roles.length]]);
+}
+function openLb(i) { scrollY = window.scrollY; lb.classList.add('open'); document.body.style.top = `-${scrollY}px`; document.body.style.position='fixed'; document.body.style.width='100%'; show(i); }
+function closeLb() { lb.classList.remove('open'); document.body.style.position=''; document.body.style.top=''; document.body.style.width=''; window.scrollTo(0, scrollY); }
+document.querySelectorAll('.shot').forEach(b => b.addEventListener('click', () => openLb(parseInt(b.closest('.card').dataset.idx, 10))));
+document.getElementById('lbclose').addEventListener('click', closeLb);
+document.getElementById('lbprev').addEventListener('click', () => step(-1));
+document.getElementById('lbnext').addEventListener('click', () => step(1));
+document.getElementById('lbprevz').addEventListener('click', () => step(-1));
+document.getElementById('lbnextz').addEventListener('click', () => step(1));
+lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.contains('lb-stage')) closeLb(); });
+document.addEventListener('keydown', e => {
+  if (!lb.classList.contains('open')) return;
+  if (e.key === 'Escape') closeLb();
+  else if (e.key === 'ArrowRight') step(1);
+  else if (e.key === 'ArrowLeft') step(-1);
+  else if (e.key === 'ArrowDown') sectionJump(1);
+  else if (e.key === 'ArrowUp') sectionJump(-1);
+});
+// touch: swipe left/right = prev/next, swipe down = close
+let tx = 0, ty = 0;
+lb.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, {passive:true});
+lb.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) step(dx < 0 ? 1 : -1);
+  else if (dy > 70 && Math.abs(dy) > Math.abs(dx)) closeLb();
+}, {passive:true});
+</script>
+</body>
+</html>
