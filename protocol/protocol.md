@@ -1,10 +1,14 @@
 # Menagerie relay protocol
 
-> **protocol-v1.2** · **Lifecycle:** locked (2026-05-28); extended 2026-08-22.
-> v1.1 added live re-attach (`sessions` / `attach` / `attached`). v1.2 adds
+> **protocol-v1.3** · **Lifecycle:** locked (2026-05-28); extended 2026-08-22, 2026-08-27.
+> v1.1 added live re-attach (`sessions` / `attach` / `attached`). v1.2 added
 > **structured sessions** (`transport: "acp"`) with nested ACP payloads
-> (`session_update` / `permission_request` / `permission_response` / `prompt`);
-> all earlier messages are unchanged.
+> (`session_update` / `permission_request` / `permission_response` / `prompt`).
+> v1.3 adds **supervisor trees** (all additive, optional): `spawn`/`spawned`/
+> `SessionInfo` carry `parent_session_id`; a `child_spawned` event fires to the
+> parent; `signal{kill}` accepts `subtree: true` (kill descendants leaf-first);
+> `hello.hosts_children` advertises support. A pre-1.3 client ignores every new
+> field and sees a flat grid. All earlier messages are unchanged.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 

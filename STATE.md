@@ -1,3 +1,21 @@
+# STATE — v1.2 build ("It's a tree")
+
+Spec: [`docs/design/v1.2-spec.md`](docs/design/v1.2-spec.md) (locked 2026-08-27) +
+[`docs/design/v1.2-ux-reference.md`](docs/design/v1.2-ux-reference.md). Branch `v1.2-tree`.
+
+| Chunk | Status |
+|---|---|
+| C0 protocol 1.3 + fixtures | **complete** (2026-08-27) — version bumped 1.2→1.3 across types.ts/messages.go/index.html; optional fields added (`parent_session_id` on spawn/spawned/SessionInfo, `subtree` on signal); 2 new fixtures (signal-subtree, event-child-spawned); validator 22/22, 19/19 types; `go test -race` green. No behavior yet. |
+| C1 relay parentage | not-started |
+| C2 relay subtree kill | not-started |
+| §7 UX gate | **locked** (v1.2-ux-reference.md) |
+| C3 browser tree model + sidebar tree | not-started |
+| C4 grid grouping + spawn-child + kill modal | not-started |
+| C5 re-attach rebuilds tree | not-started |
+| C6 close-out (+ fresh-context forward-pass before merge) | not-started |
+
+---
+
 # STATE — v1.1 build ("Structured transport")
 
 Working state for the v1.1 build cycle defined in `~/Downloads/MENAGERIE-v1.1-AGENT-HANDOFF.md`.

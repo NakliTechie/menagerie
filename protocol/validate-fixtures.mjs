@@ -99,6 +99,7 @@ const S = {
     env: [(v) => obj(v), true],
     client_id: [isStr, true],
     transport: [(v) => TRANSPORTS.includes(v), false],
+    parent_session_id: [isStr, false], // protocol 1.3
   }),
   spawned: shape({
     type: [(v) => v === "spawned", true],
@@ -108,6 +109,7 @@ const S = {
     agent: [isStr, true],
     pid: [isNum, true],
     started_at: [isStr, true],
+    parent_session_id: [isStr, false], // protocol 1.3
   }),
   output: shape({
     type: [(v) => v === "output", true],
@@ -128,6 +130,7 @@ const S = {
     signal: [(v) => SIGNALS.includes(v), true],
     cols: [isNum, false],
     rows: [isNum, false],
+    subtree: [isBool, false], // protocol 1.3; kill-subtree
   }),
   event: shape({
     type: [(v) => v === "event", true],
