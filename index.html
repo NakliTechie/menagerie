@@ -65,6 +65,7 @@
     .wordmark { font-weight: 650; letter-spacing: 0.2px; font-size: 15px; }
     .wordmark .dot { color: var(--accent); }
     .workspace { color: var(--muted); font-size: 13px; }
+    .workspace.warn { color: var(--red); font-weight: 600; }
     .spacer { flex: 1; }
     .btn { display: inline-flex; align-items: center; gap: 7px; background: var(--elev); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 12px; transition: background .12s, border-color .12s; }
     .btn:hover { background: var(--btn-hover); }
@@ -770,7 +771,11 @@
         }
         return; // already live
       }
-      const sess = makeSession(relay, info.session_id, info.agent, supportsACP(relay, info.agent) ? "acp" : "pty", Date.parse(info.started_at) || Date.now(), "");
+      // Honor the relay-declared transport (protocol 1.2); only guess from agent
+      // capability for an older relay that omits it. Guessing wrong rebuilt a PTY
+      // session as an ACP tile whose output frames were dropped → a hung tile.
+      const transport = info.transport || (supportsACP(relay, info.agent) ? "acp" : "pty");
+      const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "");
       initAcpState(sess); sessions.set(sess.id, sess);
       if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
       send(relay, { type: "attach", session_id: info.session_id });
@@ -797,6 +802,10 @@
         const s = sessions.get(msg.session_id);
         if (s && s.transport === "acp") { s.acp.dropped = (s.acp.dropped || 0) + 1; renderStreamTile(s); return; }
       }
+      // A failed spawn never sends a `spawned` reply, so its pendingCwd/pendingTransport
+      // entries would leak (the error frame carries no client_id to key off). Spawns
+      // are modal — one at a time — so any pending entries here are stale; clear them.
+      pendingCwd.clear(); pendingTransport.clear();
       showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
     }
     function handleMessage(relay, msg) {
@@ -1103,18 +1112,22 @@
       while (sa >= p && sb >= p && a[sa] === b[sb]) { sa--; sb--; }
       return { p, sa, sb };
     }
-    // Line diff with 3 lines of context, computed honestly from given texts.
+    // Line diff with 3 lines of context, computed honestly from given texts. The
+    // @@ header carries real 1-based starts and line counts (old vs new).
     function computeHunks(oldText, newText, ctx = 3) {
       const a = (oldText || "").split("\n"), b = (newText || "").split("\n");
       const { p, sa, sb } = commonBounds(a, b);
       const del = a.slice(p, sa + 1), add = b.slice(p, sb + 1);
       if (!del.length && !add.length) return [];
+      const start = Math.max(0, p - ctx), endCtx = Math.min(a.length - 1, sa + ctx);
+      const leadCtx = p - start, trailCtx = endCtx - sa; // shared context around the change
       const lines = [];
-      for (let i = Math.max(0, p - ctx); i < p; i++) lines.push({ t: " ", x: a[i] });
+      for (let i = start; i < p; i++) lines.push({ t: " ", x: a[i] });
       for (const l of del) lines.push({ t: "-", x: l });
       for (const l of add) lines.push({ t: "+", x: l });
-      for (let i = sa + 1, endCtx = Math.min(a.length - 1, sa + ctx); i <= endCtx; i++) lines.push({ t: " ", x: a[i] });
-      return [{ head: `@@ -${p + 1} +${p + 1} @@`, lines }];
+      for (let i = sa + 1; i <= endCtx; i++) lines.push({ t: " ", x: a[i] });
+      const head = `@@ -${start + 1},${leadCtx + del.length + trailCtx} +${start + 1},${leadCtx + add.length + trailCtx} @@`;
+      return [{ head, lines }];
     }
     // One diff hunk element. In the pending state each hunk gets ✓/✕ affordances.
     function diffHunkEl(hunk) {
@@ -1176,7 +1189,13 @@
       const chosen = exact || fallback;
       if (chosen) option_id = chosen.optionId;
       const relay = relays.find((r) => r.id === s.relayId);
-      if (!relay || !s.token) return;
+      if (!relay || !s.token) {
+        // Can't reach the relay to send the decision — don't silently strand the
+        // card. Flash the composer so the click clearly registered as "not sent",
+        // and leave the pending card so it's still actionable after a reconnect.
+        if (drillSid === s.id) flashComposer();
+        return;
+      }
       send(relay, { type: "permission_response", session_id: s.id, session_token: s.token, request_id: perm.request_id, outcome, option_id });
       s.acp.pendingPerm = null;
       setSessionStatus(s, "running");
@@ -1200,10 +1219,28 @@
 
     // ---- structured persistence + replay (C5) ----
     const enc = new TextEncoder();
+    // Persistence-health surface: quota/permission failures were swallowed silently,
+    // so a full disk meant a quietly truncated trajectory. After a few consecutive
+    // write failures, warn in the workspace label; clear it once a write succeeds.
+    let persistFailures = 0;
+    function notePersistResult(ok) {
+      const w = $("workspace");
+      if (ok) {
+        if (persistFailures >= 3 && w) { w.textContent = FS.label + (FS.handle ? "" : " (not saved)"); w.classList.remove("warn"); w.title = ""; }
+        persistFailures = 0;
+        return;
+      }
+      persistFailures++;
+      if (persistFailures === 3 && w) {
+        w.textContent = "⚠ history not saving";
+        w.classList.add("warn");
+        w.title = "Recent trajectory writes to your workspace failed (disk full or permission lost) — the saved session log may be incomplete.";
+      }
+    }
     async function persistAcpLine(s, obj) {
       if (!FS.ok()) return;
-      try { await FS.appendBytes([MENAGERIE_DIR, SESSIONS_DIR, s.id + ".acp.jsonl"], enc.encode(JSON.stringify(obj) + "\n")); }
-      catch (e) { console.warn("acp log flush failed", e); }
+      try { await FS.appendBytes([MENAGERIE_DIR, SESSIONS_DIR, s.id + ".acp.jsonl"], enc.encode(JSON.stringify(obj) + "\n")); notePersistResult(true); }
+      catch (e) { console.warn("acp log flush failed", e); notePersistResult(false); }
     }
     function serializeStream(s) { return JSON.stringify(s.acp ? s.acp.items : []); }
 
@@ -1269,13 +1306,13 @@
         ended_at: sess.endedAt ? new Date(sess.endedAt).toISOString() : null,
         exit_code: (sess.exitCode === undefined ? null : sess.exitCode),
         capture: (sess.transport === "acp" ? "acp-jsonl" : "pty-bytes"),
-      }); } catch (e) { console.warn("write meta failed", e); }
+      }); notePersistResult(true); } catch (e) { console.warn("write meta failed", e); notePersistResult(false); }
     }
     async function flushSession(sess) {
       if (!FS.ok() || sess.flushing || !sess.pending || sess.pending.length === 0) return;
       sess.flushing = true; const chunks = sess.pending; sess.pending = [];
-      try { await FS.appendBytes([MENAGERIE_DIR, SESSIONS_DIR, sess.id + ".pty"], concatChunks(chunks)); }
-      catch (e) { console.warn("pty flush failed", e); sess.pending = chunks.concat(sess.pending); }
+      try { await FS.appendBytes([MENAGERIE_DIR, SESSIONS_DIR, sess.id + ".pty"], concatChunks(chunks)); notePersistResult(true); }
+      catch (e) { console.warn("pty flush failed", e); sess.pending = chunks.concat(sess.pending); notePersistResult(false); }
       finally { sess.flushing = false; }
     }
     setInterval(() => { for (const s of sessions.values()) if (s.status !== "exited") flushSession(s); }, 1500);

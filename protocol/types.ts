@@ -144,6 +144,7 @@ export interface SessionInfo {
   agent: string;
   started_at: string; // ISO-8601 UTC
   pid: number;
+  transport?: Transport; // protocol 1.2; absent ⇒ pty (so re-attach doesn't guess from agent capability)
 }
 
 /** Live session list, sent right after `registered`, so a reconnecting client can re-attach (protocol 1.1). */
