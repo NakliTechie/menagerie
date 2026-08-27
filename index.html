@@ -723,6 +723,11 @@
         const s = sessions.get(msg.session_id); if (!s) return;
         s.token = msg.session_token;
         if (s.term) s.term.reset(); // the replay frame that follows rebuilds the buffer cleanly
+        // Same for a structured session: clear the transcript so the seq-(-1) tail
+        // replay rebuilds it instead of appending a duplicate (messages/thoughts
+        // don't dedupe the way tool calls do). persistedSeq is preserved so already
+        // saved frames are never re-persisted.
+        if (s.transport === "acp" && s.acp) resetAcpTranscript(s);
         setSessionStatus(s, "running"); fitTile(s);
       },
       output(relay, msg) {
@@ -806,6 +811,13 @@
     function initAcpState(s) {
       if (s.transport !== "acp") return;
       s.acp = { items: [], tools: new Map(), order: [], pendingPerm: null, dropped: 0, rawLog: [], persistedSeq: 0, usage: null, turnUsage: null, mode: null, config: {} };
+    }
+    // Clear the rendered transcript ahead of a re-attach tail replay, but keep
+    // persistedSeq (so saved frames aren't re-persisted) and the instrument-bar
+    // state (config/usage — the relay re-emits these, no need to flash empty).
+    function resetAcpTranscript(s) {
+      const A = s.acp; if (!A) return;
+      A.items = []; A.tools = new Map(); A.order = []; A.pendingPerm = null; A.rawLog = []; A.dropped = 0;
     }
     const TOOL_GLYPH = { read: "▤", edit: "✎", delete: "✂", move: "⇄", search: "⌕", execute: "$", bash: "$", fetch: "↭", think: "✳", other: "•" };
     function toolGlyph(kind) { return TOOL_GLYPH[(kind || "").toLowerCase()] || "•"; }
@@ -999,7 +1011,9 @@
     // Instrument bar (design §2): context gauge · model · thinking · mode · tokens
     // · cost · status. Every field renders only when the agent actually exposes it
     // — absent data collapses, never fabricated.
-    function fmtTokens(n) { return n == null ? null : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n); }
+    // Only ever formats a real number — a non-finite value (agent-controlled usage
+    // frames are untrusted) yields null so it can't reach innerHTML as raw text.
+    function fmtTokens(n) { return typeof n === "number" && Number.isFinite(n) ? (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n)) : null; }
     // Context-window gauge element from {used,size}, or null when absent — never
     // fabricated. Fill goes yellow ≥80%, red ≥95%.
     function instrGauge(usage) {
@@ -1013,11 +1027,16 @@
       wrap.append(document.createTextNode("ctx "), g, document.createTextNode(` ${pct}% · ${fmtTokens(usage.used)}/${fmtTokens(usage.size)}`));
       return wrap;
     }
-    // Turn token counters string from the last prompt result, or null.
+    // Turn token counters string from the last prompt result, or null. Every field
+    // is a validated number (fmtTokens → null on non-numeric) before it reaches the
+    // instrument bar's innerHTML, so a hostile usage frame can't inject markup.
     function fmtTurn(tu) {
-      if (!tu || tu.totalTokens == null) return null;
-      const io = tu.inputTokens != null ? `</strong> (in ${fmtTokens(tu.inputTokens)} · out ${fmtTokens(tu.outputTokens ?? 0)})<strong>` : "";
-      return `${fmtTokens(tu.totalTokens)}${io}`;
+      if (!tu) return null;
+      const total = fmtTokens(tu.totalTokens);
+      if (total == null) return null;
+      const inTok = fmtTokens(tu.inputTokens);
+      const io = inTok != null ? `</strong> (in ${inTok} · out ${fmtTokens(tu.outputTokens) ?? 0})<strong>` : "";
+      return `${total}${io}`;
     }
     function fmtCost(cost) {
       if (!cost || cost.amount == null) return null;
@@ -1098,18 +1117,13 @@
       return [{ head: `@@ -${p + 1} +${p + 1} @@`, lines }];
     }
     // One diff hunk element. In the pending state each hunk gets ✓/✕ affordances.
-    function diffHunkEl(hunk, state) {
+    function diffHunkEl(hunk) {
+      // No per-hunk approve/reject: ACP permission is whole-tool-call, so the
+      // decision lives on the card's Approve/Reject (decidePermission). A per-hunk
+      // control would only look granular — the protocol can't act on it.
       const h = document.createElement("div"); h.className = "hunk";
       const hh = document.createElement("h4");
       hh.appendChild(document.createTextNode(hunk.head));
-      if (state === "pending") {
-        const btns = document.createElement("span"); btns.className = "hbtns";
-        const yes = document.createElement("button"); yes.className = "hbtn yes"; yes.textContent = "✓";
-        const no = document.createElement("button"); no.className = "hbtn no"; no.textContent = "✕";
-        yes.addEventListener("click", () => { h.classList.add("h-approved"); });
-        no.addEventListener("click", () => { h.classList.add("h-rejected"); });
-        btns.append(yes, no); hh.appendChild(btns);
-      }
       h.appendChild(hh);
       for (const l of hunk.lines) {
         const el = document.createElement("div"); el.className = "hl " + (l.t === "+" ? "add" : l.t === "-" ? "del" : "");
@@ -1142,7 +1156,7 @@
       const diffs = (tc.content || []).filter((c) => c.type === "diff");
       card.appendChild(diffCardHead(tc, diffs, state));
       if (diffs.length) {
-        for (const d of diffs) for (const hk of computeHunks(d.oldText, d.newText)) card.appendChild(diffHunkEl(hk, state));
+        for (const d of diffs) for (const hk of computeHunks(d.oldText, d.newText)) card.appendChild(diffHunkEl(hk));
       } else {
         // Where ACP gives only a command/tool call, render THE COMMAND — never fabricate a diff.
         const others = (tc.content || []).filter((c) => c.type !== "diff");
@@ -1514,7 +1528,7 @@
     }
 
     function bytesFromB64(b64) { try { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; } catch { return null; } }
-    function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
     // ===== rendering ==================================================
     // Left sidebar (tuicommander-style): Relays · live Sessions · Past sessions.
@@ -2012,7 +2026,11 @@
       }
     });
 
-    window.__menagerie = { relays, sessions, addRelay, FS,
+    // Test/demo seam for /guide-nt + /walkthrough-nt. Deliberately does NOT expose
+    // the live `relays`/`sessions` (they carry registration + session tokens) — the
+    // seam methods reach them through closure, so nothing on the page can read a
+    // token off this global. FS is a directory handle, not a secret.
+    window.__menagerie = { FS,
       test: { async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
               async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); },
               // Fabricate a rendered tile with no relay (input no-ops) — for offline layout/keyboard testing.
