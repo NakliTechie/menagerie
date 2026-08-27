@@ -7,3 +7,4 @@ plan/
 relay-go/menagerie-relay
 .aider*
 .playwright-mcp/
+.worktrees/
