@@ -91,6 +91,12 @@
     .sb-tri-spacer { flex: 0 0 auto; width: 12px; }
     .sb-count { flex: 0 0 auto; font-size: 10px; color: var(--faint); background: var(--panel-2); border-radius: 8px; padding: 0 5px; }
     .sb-orphan { flex: 0 0 auto; font-size: 10px; color: var(--yellow); }
+    .spawn-parent-chip { margin-bottom: 12px; padding: 7px 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 12.5px; color: var(--text); }
+    .spawn-parent-chip strong { color: var(--accent); }
+    .stk-opt { display: flex; align-items: flex-start; gap: 8px; padding: 8px 2px; font-size: 13px; cursor: pointer; }
+    .stk-opt .mut { color: var(--muted); }
+    .btn.danger { background: var(--red); color: #fff; border-color: var(--red); }
+    .btn.danger:hover { filter: brightness(1.05); }
     .sb-empty { color: var(--faint); font-size: 12px; padding: 4px 8px; }
     .main { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px 18px 56px; }
 
@@ -492,6 +498,7 @@
     <div class="modal" role="dialog" aria-label="Spawn agent">
       <header><h2>Spawn agent</h2><span class="spacer"></span><button class="btn icon ghost" data-close>✕</button></header>
       <div class="body">
+        <div id="spawnParentChip" class="spawn-parent-chip" style="display:none"></div>
         <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select></div>
         <div class="field"><label for="spawnAgent">Agent</label><select id="spawnAgent"></select></div>
         <div class="field" id="customCmdField" style="display:none"><label for="spawnCustomCmd">Custom command</label>
@@ -1382,7 +1389,9 @@
       // PTY shims take the initial task as argv; structured sessions get theirs
       // through the first `prompt` instead.
       const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (tr === "pty" && task ? [task] : []);
-      send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr });
+      const parentId = resolveSpawnParent(relayId); // v1.2: only if a live session on THIS relay
+      spawnChildParentId = null;
+      send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr, parent_session_id: parentId });
       showSpawnResult(tr === "acp" ? "spawning structured session…" : "spawning…", true);
     }
 
@@ -1396,8 +1405,9 @@
       const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen (click to toggle)"; full.setAttribute("aria-label", "Toggle fullscreen"); full.textContent = "⛶";
       full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
       const kill = document.createElement("button"); kill.className = "btn icon ghost"; kill.title = "Kill"; kill.setAttribute("aria-label", "Kill agent"); kill.textContent = "🗑";
-      kill.addEventListener("click", () => signal(sess, "kill"));
-      head.append(dot, title, spacer, full, kill);
+      kill.addEventListener("click", () => killTile(sess));
+      const childBtn = spawnChildBtn(sess);
+      head.append(dot, title, spacer, full, ...(childBtn ? [childBtn] : []), kill);
       head.addEventListener("click", (e) => { if (e.target !== kill && e.target !== full) focusTile(sess); });
       head.addEventListener("dblclick", (e) => { if (e.target !== kill) toggleFullscreen(tile); });
       makeDraggable(tile, head);
@@ -1464,7 +1474,45 @@
     }
     function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } updateAttention(); }
     function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited" || !sess.token) return; if (sess.status === "stalled") setSessionStatus(sess, "running"); send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
-    function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
+    function signal(sess, sig, cols, rows, subtree) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } if (subtree) m.subtree = true; send(relay, m); }
+    // The ⑃ spawn-child tile button, only when the relay advertises hosts_children.
+    function spawnChildBtn(sess) {
+      const relay = relays.find((r) => r.id === sess.relayId);
+      if (!relay || !(relay.hello && relay.hello.hosts_children)) return null;
+      const b = document.createElement("button"); b.className = "btn icon ghost"; b.title = "Spawn child agent"; b.setAttribute("aria-label", "Spawn child agent"); b.textContent = "⑃";
+      b.addEventListener("click", (e) => { e.stopPropagation(); openSpawnChild(sess); });
+      return b;
+    }
+    // Kill from a tile — a childless session kills straight; a parent opens the
+    // subtree-kill modal (C4.3). liveChildren counts this session's live children.
+    function liveChildren(id) { return [...sessions.values()].filter((s) => !s.replay && s.parentId === id).length; }
+    function killTile(sess) {
+      const n = liveChildren(sess.id);
+      if (n > 0) openSubtreeKill(sess, n); else signal(sess, "kill");
+    }
+    // In-app subtree-kill confirm (UX-ref §5) — never a native confirm(). Default is
+    // kill-the-subtree; "only this" leaves the children running (they orphan).
+    function openSubtreeKill(sess, n) {
+      const scrim = document.createElement("div"); scrim.className = "scrim open"; scrim.id = "subtreeKillScrim"; scrim.style.zIndex = "120";
+      scrim.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Kill subtree">
+        <header><h2>Kill subtree?</h2><span class="spacer"></span><button class="btn icon ghost" data-x aria-label="Cancel">✕</button></header>
+        <div class="body">
+          <p class="help-lede"><strong>${escapeHtml(sess.agent)}</strong> has ${n} child${n === 1 ? "" : "ren"}.</p>
+          <label class="stk-opt"><input type="radio" name="stk" value="only"> Kill only ${escapeHtml(sess.agent)} <span class="mut">(children keep running, promoted to root)</span></label>
+          <label class="stk-opt"><input type="radio" name="stk" value="subtree" checked> Kill ${escapeHtml(sess.agent)} and all ${n} child${n === 1 ? "" : "ren"}</label>
+          <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn" data-x>Cancel</button><button class="btn danger" data-go>Kill ${n + 1}</button></div>
+        </div></div>`;
+      document.body.appendChild(scrim);
+      const close = () => { scrim.remove(); document.removeEventListener("keydown", onKey, true); };
+      const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); close(); } };
+      document.addEventListener("keydown", onKey, true);
+      scrim.addEventListener("click", (e) => { if (e.target === scrim || e.target.hasAttribute("data-x")) close(); });
+      scrim.querySelector("[data-go]").addEventListener("click", () => {
+        const subtree = scrim.querySelector('input[name="stk"]:checked').value === "subtree";
+        signal(sess, "kill", null, null, subtree);
+        close();
+      });
+    }
     function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
     function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input" || s.status === "stalled").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
     // Soft two-tone chime when an agent transitions into needs_input. Web Audio,
@@ -1508,9 +1556,10 @@
       const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen"; full.textContent = "⛶";
       full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
       const kill = document.createElement("button"); kill.className = "btn icon ghost"; kill.title = "Kill"; kill.textContent = "🗑";
-      kill.addEventListener("click", () => signal(sess, "kill"));
-      head.append(dot, title, spacer, drill, full, kill);
-      head.addEventListener("click", (e) => { if (![kill, full, drill].includes(e.target)) openDrill(sess); });
+      kill.addEventListener("click", () => killTile(sess));
+      const childBtn = spawnChildBtn(sess);
+      head.append(dot, title, spacer, drill, full, ...(childBtn ? [childBtn] : []), kill);
+      head.addEventListener("click", (e) => { if (![kill, full, drill, childBtn].includes(e.target)) openDrill(sess); });
       head.addEventListener("dblclick", (e) => { if (![kill, drill].includes(e.target)) toggleFullscreen(tile); });
       makeDraggable(tile, head);
       const streamEl = document.createElement("div"); streamEl.className = "tile-stream";
@@ -1821,12 +1870,31 @@
       }
       return row;
     }
+    // v1.2: the spawn dialog can be scoped to a parent (spawn-child). Transient —
+    // cleared when the plain + Spawn opens it, and after a spawn is sent.
+    let spawnChildParentId = null;
+    function openSpawnDialog() { spawnChildParentId = null; openModal("spawnScrim"); }
+    function resolveSpawnParent(relayId) {
+      const p = spawnChildParentId && sessions.get(spawnChildParentId);
+      return p && p.relayId === relayId ? spawnChildParentId : undefined;
+    }
+    function openSpawnChild(sess) {
+      const relay = relays.find((r) => r.id === sess.relayId);
+      if (!relay || !(relay.hello && relay.hello.hosts_children)) return; // relay can't host children
+      spawnChildParentId = sess.id;
+      openModal("spawnScrim");
+      $("spawnRelay").value = sess.relayId; renderAgentOptions();
+      if (sess.cwd) $("spawnCwd").value = sess.cwd; // inherit the parent's cwd (spec Q2)
+    }
     function renderSpawnDialog() {
       const relaySel = $("spawnRelay"); const prev = relaySel.value; relaySel.innerHTML = "";
       const connected = relays.filter((r) => r.status === "connected");
       for (const r of connected) { const o = document.createElement("option"); o.value = r.id; o.textContent = r.name; relaySel.appendChild(o); }
       if (connected.some((r) => r.id === prev)) relaySel.value = prev;
       renderAgentOptions(); $("doSpawnBtn").disabled = connected.length === 0;
+      const chip = $("spawnParentChip"); const parent = spawnChildParentId && sessions.get(spawnChildParentId);
+      if (parent) { chip.style.display = ""; chip.innerHTML = `child of: <strong>${escapeHtml(parent.agent)}</strong>`; }
+      else { chip.style.display = "none"; spawnChildParentId = null; }
     }
     function renderAgentOptions() {
       const agentSel = $("spawnAgent"); agentSel.innerHTML = "";
@@ -2005,7 +2073,7 @@
 
     // ===== wiring =====================================================
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
-    $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
+    $("spawnBtn").addEventListener("click", openSpawnDialog);
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("helpTourBtn").addEventListener("click", () => { closeModal("helpScrim"); setTimeout(() => showTour({ force: true }), 60); });
     $("themeBtn").addEventListener("click", toggleTheme);
@@ -2123,12 +2191,22 @@
     // Single-key grid actions (chord digits and the drill-only keys are handled
     // separately in hotkeyGrid). Each owns its own preventDefault.
     const GRID_KEYS = {
-      n: (e) => { openModal("spawnScrim"); e.preventDefault(); },
+      n: (e) => { openSpawnDialog(); e.preventDefault(); },
       g: () => { _gPending = true; _gTimer = setTimeout(() => { _gPending = false; }, 1200); },
       t: () => { setTreeView(!treeActive([...sessions.values()].filter((s) => !s.replay))); },
+      c: (e) => { const f = document.querySelector(".tile.focused"); const s = f && sessions.get(f.dataset.sid); if (s) openSpawnChild(s); e.preventDefault(); },
       f: (e) => { toggleFullscreen(document.querySelector(".tile.focused") || tilesInOrder()[0]); e.preventDefault(); },
       Tab: (e) => { cycleFocus(e.shiftKey ? -1 : 1); e.preventDefault(); },
     };
+    // ← / → collapse / expand the focused parent's subtree (only when it has children).
+    function hotkeyArrowCollapse(e) {
+      const f = document.querySelector(".tile.focused"); const s = f && sessions.get(f.dataset.sid);
+      if (!s || !liveChildren(s.id)) return false;
+      const collapsed = collapsedParents.has(s.id);
+      if (e.key === "ArrowLeft" && !collapsed) { toggleCollapsed(s.id); e.preventDefault(); return true; }
+      if (e.key === "ArrowRight" && collapsed) { toggleCollapsed(s.id); e.preventDefault(); return true; }
+      return false;
+    }
     function hotkeyEnter(e) {
       const f = document.querySelector(".tile.focused");
       const s = f && sessions.get(f.dataset.sid);
@@ -2138,6 +2216,7 @@
       if (hotkeyChord(e)) return;
       const h = GRID_KEYS[e.key];
       if (h) { h(e); return; }
+      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && hotkeyArrowCollapse(e)) return;
       if (drillOpen() && (e.key === "d" || e.key === "D")) { $("rawlogBtn").click(); e.preventDefault(); return; }
       if (e.key === "Enter") hotkeyEnter(e);
     }
@@ -2163,7 +2242,8 @@
     // seam methods reach them through closure, so nothing on the page can read a
     // token off this global. FS is a directory handle, not a secret.
     window.__menagerie = { FS,
-      test: { async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
+      test: { _sent: [], // frames the demo's fake relay "sent" (for verification)
+              async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
               async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); },
               // Fabricate a rendered tile with no relay (input no-ops) — for offline layout/keyboard testing.
               fakeSession(agent) {
@@ -2199,9 +2279,13 @@
               // Offline supervisor tree — a parent + N children (parentId set) for
               // tree-view layout testing without a relay. Returns the parent id.
               fakeTree(nChildren) {
+                if (!relays.find((r) => r.id === "fake")) {
+                  const sent = window.__menagerie.test._sent;
+                  relays.push({ id: "fake", name: "localhost", url: "ws://fake", status: "connected", hello: { hosts_children: true, agents: ["omp", "claude-code"], host_os: "darwin", host_arch: "arm64", transports: ["pty", "acp"] }, ws: { readyState: 1, send: (s) => { try { sent.push(JSON.parse(s)); } catch (e) { void e; } } } });
+                }
                 const mk = (agent, parentId, status) => {
                   const s = { id: (parentId ? "child" : "root") + "-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent,
-                    transport: "acp", parentId: parentId || null, status: status || "running", startedAt: Date.now(), token: null, cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
+                    transport: "acp", parentId: parentId || null, status: status || "running", startedAt: Date.now(), token: "fake-token", cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
                   initAcpState(s); sessions.set(s.id, s); createStreamTile(s); return s.id;
                 };
                 const parent = mk("orchestrator", null, "working");
