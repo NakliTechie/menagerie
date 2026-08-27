@@ -1657,7 +1657,10 @@
     // user's explicit choice. collapsedParents persists per-parent collapse.
     let treeViewPref = null; try { const v = localStorage.getItem("menagerie-tree-view"); if (v === "1") treeViewPref = true; else if (v === "0") treeViewPref = false; } catch {}
     const collapsedParents = new Set(); try { (JSON.parse(localStorage.getItem("menagerie-collapsed") || "[]") || []).forEach((x) => collapsedParents.add(x)); } catch {}
-    function persistCollapsed() { try { localStorage.setItem("menagerie-collapsed", JSON.stringify([...collapsedParents])); } catch {} }
+    function persistCollapsed() {
+      for (const id of collapsedParents) if (!sessions.has(id)) collapsedParents.delete(id); // don't accrue dead ids
+      try { localStorage.setItem("menagerie-collapsed", JSON.stringify([...collapsedParents])); } catch {}
+    }
     function treeActive(live) { return treeViewPref !== null ? treeViewPref : live.some((s) => s.parentId); }
     // Build parent→children and the root set from the live sessions. A session
     // whose parent isn't live is an orphan → rendered at root with a marker.
@@ -1665,9 +1668,18 @@
       const byId = new Map(live.map((s) => [s.id, s]));
       const kids = new Map(), roots = [];
       for (const s of live) {
-        if (s.parentId && byId.has(s.parentId)) { (kids.get(s.parentId) || kids.set(s.parentId, []).get(s.parentId)).push(s); }
+        // A child links only to a live, non-self, non-exited parent — an exited
+        // parent promotes its children to root (M1), self-parent can't nest (H2).
+        const parent = s.parentId && s.parentId !== s.id ? byId.get(s.parentId) : null;
+        if (parent && parent.status !== "exited") { (kids.get(s.parentId) || kids.set(s.parentId, []).get(s.parentId)).push(s); }
         else roots.push(s);
       }
+      // Cycle guard (H2): a session unreachable from any root (A↔B) would vanish —
+      // root it so every live session renders exactly once.
+      const reachable = new Set();
+      const mark = (id) => { if (reachable.has(id)) return; reachable.add(id); for (const c of (kids.get(id) || [])) mark(c.id); };
+      for (const r of roots) mark(r.id);
+      for (const s of live) if (!reachable.has(s.id)) roots.push(s);
       return { kids, roots, byId };
     }
     // The disclosure triangle (parent) or an indent spacer (nested leaf).
@@ -1698,7 +1710,9 @@
     function renderSidebarSessions(container, live) {
       if (!treeActive(live)) { for (const s of live) container.appendChild(sbSessionRow(s, 0, new Map())); return; }
       const { kids, roots } = childrenIndex(live);
+      const seen = new Set();
       const emit = (s, depth) => {
+        if (seen.has(s.id)) return; seen.add(s.id); // defensive against a residual cycle
         container.appendChild(sbSessionRow(s, depth, kids));
         if (collapsedParents.has(s.id)) return;
         for (const c of (kids.get(s.id) || [])) emit(c, depth + 1);
@@ -1729,18 +1743,27 @@
       }
       const { kids, roots } = childrenIndex(live);
       const order = [];
+      const seen = new Set();
       const walk = (s, depth, hidden) => {
+        if (seen.has(s.id)) return; seen.add(s.id); // cycle guard (H2)
         order.push({ s, depth, hidden });
         const nextHidden = hidden || collapsedParents.has(s.id);
         for (const c of (kids.get(s.id) || [])) walk(c, depth + 1, nextHidden);
       };
       for (const r of roots) walk(r, 0, false);
+      // Styles are idempotent and don't move nodes — always apply.
       for (const { s, depth, hidden } of order) {
         s.tile.style.marginLeft = depth ? (depth * 24) + "px" : "";
         s.tile.style.display = hidden ? "none" : "";
         s.tile.classList.toggle("tile-child", depth > 0);
-        grid.appendChild(s.tile); // reorder into tree order (moves the node, keeps its state)
       }
+      // Reorder ONLY when the DOM order actually differs — moving a tile node blurs
+      // a focused xterm and drops selection/scroll, and renderAll fires on every
+      // frame, so a blind re-append thrashed every streaming session (H1).
+      const desired = order.map((o) => o.s.tile);
+      const current = [...grid.querySelectorAll(".tile")];
+      const sameOrder = desired.length === current.length && desired.every((t, i) => t === current[i]);
+      if (!sameOrder) for (const t of desired) grid.appendChild(t);
     }
     // Update only the active highlight without rebuilding the list (called on focus changes).
     function syncSidebarActive() {
@@ -1895,9 +1918,17 @@
       for (const r of connected) { const o = document.createElement("option"); o.value = r.id; o.textContent = r.name; relaySel.appendChild(o); }
       if (connected.some((r) => r.id === prev)) relaySel.value = prev;
       renderAgentOptions(); $("doSpawnBtn").disabled = connected.length === 0;
-      const chip = $("spawnParentChip"); const parent = spawnChildParentId && sessions.get(spawnChildParentId);
-      if (parent) { chip.style.display = ""; chip.innerHTML = `child of: <strong>${escapeHtml(parent.agent)}</strong>`; }
-      else { chip.style.display = "none"; spawnChildParentId = null; }
+      renderSpawnParentChip();
+    }
+    // The "child of: X" chip only shows when the parent is a live session on the
+    // CURRENTLY-selected relay — otherwise the spawn would omit parent_session_id
+    // (resolveSpawnParent) and the chip would lie (L1).
+    function renderSpawnParentChip() {
+      const chip = $("spawnParentChip");
+      const parent = spawnChildParentId && sessions.get(spawnChildParentId);
+      const onSelectedRelay = parent && parent.relayId === $("spawnRelay").value;
+      if (onSelectedRelay) { chip.style.display = ""; chip.innerHTML = `child of: <strong>${escapeHtml(parent.agent)}</strong>`; }
+      else { chip.style.display = "none"; if (!parent) spawnChildParentId = null; }
     }
     function renderAgentOptions() {
       const agentSel = $("spawnAgent"); agentSel.innerHTML = "";
@@ -2154,6 +2185,7 @@
     if (window.visualViewport) { window.visualViewport.addEventListener("resize", positionKeybar); window.visualViewport.addEventListener("scroll", positionKeybar); }
     $("spawnRelay").addEventListener("change", renderAgentOptions);
     $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
+    $("spawnRelay").addEventListener("change", renderSpawnParentChip);
     $("addRelayBtn").addEventListener("click", () => {
       const url = $("relayUrl").value.trim(), token = $("relayToken").value.trim(), err = $("addRelayError"); err.textContent = "";
       if (!/^wss?:\/\//.test(url)) { err.textContent = "URL must start with ws:// or wss://"; return; }
@@ -2281,6 +2313,15 @@
               openDrillById(id) { const s = sessions.get(id); if (s && s.transport === "acp") openDrill(s); },
               // A child whose parent isn't present (parent exited before re-attach) —
               // must render at root with the ⤺ marker, not vanish. Returns its id.
+              // A hostile relay could self-parent (id===parentId) or form an A↔B cycle;
+              // such sessions must still render (rooted), never vanish. Returns their ids.
+              fakeCycle() {
+                const mk = (id, parentId) => { const s = { id, relayId: "fake", relayName: "localhost", agent: "worker", transport: "acp", parentId, status: "running", startedAt: Date.now(), token: "fake-token", cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false }; initAcpState(s); sessions.set(id, s); createStreamTile(s); return id; };
+                const self = mk("cyc-self", "cyc-self");        // self-parent
+                mk("cyc-a", "cyc-b"); mk("cyc-b", "cyc-a");     // A↔B cycle
+                renderAll();
+                return [self, "cyc-a", "cyc-b"];
+              },
               fakeOrphan() {
                 const s = { id: "orphan-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent: "worker",
                   transport: "acp", parentId: "ghost-parent-not-live", status: "running", startedAt: Date.now(), token: "fake-token", cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
