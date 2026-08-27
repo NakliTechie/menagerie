@@ -813,6 +813,9 @@
       else if (msg.event === "stalled") { if (s.status !== "stalled") beep(); setSessionStatus(s, "stalled"); } // likely looping — sticky until you act
       else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
       else if (msg.event === "idle") setSessionStatus(s, "idle");
+      // child_spawned (v1.2): informational for the parent's owner — the child's own
+      // `spawned` frame already created it with parentId, and handleMessage's trailing
+      // renderAll() reflows the tree. Explicit no-op so it isn't mistaken for unhandled.
     }
     function handleErrorFrame(relay, msg) {
       if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} return; }
@@ -2276,6 +2279,14 @@
               },
               serializeStream(id) { const s = sessions.get(id); return s ? serializeStream(s) : null; },
               openDrillById(id) { const s = sessions.get(id); if (s && s.transport === "acp") openDrill(s); },
+              // A child whose parent isn't present (parent exited before re-attach) —
+              // must render at root with the ⤺ marker, not vanish. Returns its id.
+              fakeOrphan() {
+                const s = { id: "orphan-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent: "worker",
+                  transport: "acp", parentId: "ghost-parent-not-live", status: "running", startedAt: Date.now(), token: "fake-token", cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
+                initAcpState(s); sessions.set(s.id, s); createStreamTile(s); renderAll();
+                return s.id;
+              },
               // Offline supervisor tree — a parent + N children (parentId set) for
               // tree-view layout testing without a relay. Returns the parent id.
               fakeTree(nChildren) {
