@@ -17,10 +17,18 @@ recorded here and the build continues against reality.
 | C5 structured replay | **complete** — `byteIdentical: true` asserted across a live reload+attach cycle |
 | C6 close-out | **complete with one honest gap** (2026-08-22): roadmap amendment ✓ · role matrix re-run ✓ · README/version bump ✓ · cleanup ✓. **Gap:** the handoff's `/forward-pass` fresh-context audits after C2 and C5 were NOT run as separate fresh-context passes — the subagent/oracle budget ran out mid-session; verification instead happened continuously per-chunk with machine-checked evidence at every checkpoint. A fresh-context forward-pass over `v1.1-structured-transport` is the recommended next action before merge.
 
+## Push/merge policy (standing authorization, 2026-08-27)
+
+Chirag authorized **automated push + merge to `main`** for this repo. The agent
+may commit, merge feature branches into `main`, and push to origin autonomously
+once local gates pass (`go test -race ./...`, the oxlint pre-commit gate, and
+browser verification of any observable change). No hold-for-owner on push/merge.
+The genuine stop-lines still apply: destructive history rewrites, secrets/creds,
+and anything outward-facing beyond pushing this repo.
+
 ### Owner actions remaining
 
 - Portfolio/profile entries (outside this repo).
-- Version string is bumped (relay 0.5.0); push/merge decisions are yours — branch is `v1.1-structured-transport`, main untouched.
 - To exercise the real-omp permission leg once the provider 400 is resolved:
   `[agents.omp] acp_args = ["acp", "--approval-mode", "always-ask"]` in relay.toml,
   then spawn omp from the app and prompt it to write a file.
