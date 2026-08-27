@@ -115,6 +115,11 @@
     .s-stalled { background: var(--red); box-shadow: 0 0 0 3px rgba(248,81,73,.18); animation: pulse .7s ease-in-out infinite; }
 
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+    /* Tree view (v1.2): a vertical stack; children indent under their parent with a
+       left band. The flat multi-column grid above stays the default (Grid view). */
+    .grid.tree { display: block; }
+    .grid.tree .tile { margin-bottom: 14px; }
+    .grid.tree .tile.tile-child { border-left: 3px solid var(--border); border-top-left-radius: 0; border-bottom-left-radius: 0; }
     .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--muted); background: linear-gradient(180deg, var(--panel), transparent); }
     .empty h2 { color: var(--text); font-size: 16px; font-weight: 600; margin: 0 0 6px; }
     .empty p { margin: 0 0 16px; }
@@ -1657,6 +1662,34 @@
       btn.title = on ? "Tree view (click for flat grid)" : "Grid view (click for tree)";
       btn.classList.toggle("active", on);
     }
+    // Grid grouping: in tree view the grid becomes a vertical stack ordered by the
+    // tree, children indented one step under their parent with a left band; a
+    // collapsed parent hides its subtree's tiles. Flat (Grid) view is untouched.
+    function regroupGrid() {
+      const grid = $("grid");
+      if (grid.querySelector(".tile.dragging")) return; // don't fight an in-progress drag
+      const live = [...sessions.values()].filter((s) => !s.replay && s.tile);
+      const tree = treeActive(live);
+      grid.classList.toggle("tree", tree);
+      if (!tree) {
+        for (const s of live) { s.tile.style.marginLeft = ""; s.tile.style.display = ""; s.tile.classList.remove("tile-child"); }
+        return;
+      }
+      const { kids, roots } = childrenIndex(live);
+      const order = [];
+      const walk = (s, depth, hidden) => {
+        order.push({ s, depth, hidden });
+        const nextHidden = hidden || collapsedParents.has(s.id);
+        for (const c of (kids.get(s.id) || [])) walk(c, depth + 1, nextHidden);
+      };
+      for (const r of roots) walk(r, 0, false);
+      for (const { s, depth, hidden } of order) {
+        s.tile.style.marginLeft = depth ? (depth * 24) + "px" : "";
+        s.tile.style.display = hidden ? "none" : "";
+        s.tile.classList.toggle("tile-child", depth > 0);
+        grid.appendChild(s.tile); // reorder into tree order (moves the node, keeps its state)
+      }
+    }
     // Update only the active highlight without rebuilding the list (called on focus changes).
     function syncSidebarActive() {
       const focused = document.querySelector(".tile.focused");
@@ -1810,7 +1843,7 @@
     }
     // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
-    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); }
+    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid(); }
 
     // ===== workspace overlay + modals =================================
     function openWorkspaceOverlay(mode, handle) {
