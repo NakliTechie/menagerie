@@ -86,6 +86,17 @@
     .sb-row.active { background: var(--elev); }
     .sb-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sb-row .mt { color: var(--faint); font-size: 11px; flex: 0 0 auto; }
+    .sb-tri { flex: 0 0 auto; width: 12px; color: var(--muted); font-size: 10px; cursor: pointer; transition: transform .12s ease; user-select: none; }
+    .sb-tri.open { transform: rotate(90deg); }
+    .sb-tri-spacer { flex: 0 0 auto; width: 12px; }
+    .sb-count { flex: 0 0 auto; font-size: 10px; color: var(--faint); background: var(--panel-2); border-radius: 8px; padding: 0 5px; }
+    .sb-orphan { flex: 0 0 auto; font-size: 10px; color: var(--yellow); }
+    .spawn-parent-chip { margin-bottom: 12px; padding: 7px 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 12.5px; color: var(--text); }
+    .spawn-parent-chip strong { color: var(--accent); }
+    .stk-opt { display: flex; align-items: flex-start; gap: 8px; padding: 8px 2px; font-size: 13px; cursor: pointer; }
+    .stk-opt .mut { color: var(--muted); }
+    .btn.danger { background: var(--red); color: #fff; border-color: var(--red); }
+    .btn.danger:hover { filter: brightness(1.05); }
     .sb-empty { color: var(--faint); font-size: 12px; padding: 4px 8px; }
     .main { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px 18px 56px; }
 
@@ -110,6 +121,11 @@
     .s-stalled { background: var(--red); box-shadow: 0 0 0 3px rgba(248,81,73,.18); animation: pulse .7s ease-in-out infinite; }
 
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+    /* Tree view (v1.2): a vertical stack; children indent under their parent with a
+       left band. The flat multi-column grid above stays the default (Grid view). */
+    .grid.tree { display: block; }
+    .grid.tree .tile { margin-bottom: 14px; }
+    .grid.tree .tile.tile-child { border-left: 3px solid var(--border); border-top-left-radius: 0; border-bottom-left-radius: 0; }
     .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 48px 24px; text-align: center; color: var(--muted); background: linear-gradient(180deg, var(--panel), transparent); }
     .empty h2 { color: var(--text); font-size: 16px; font-weight: 600; margin: 0 0 6px; }
     .empty p { margin: 0 0 16px; }
@@ -337,6 +353,7 @@
     <span class="wordmark">Menagerie<span class="dot">.</span></span>
     <span class="workspace" id="workspace">no workspace</span>
     <span class="spacer"></span>
+    <button class="btn icon ghost" id="treeBtn" title="Grid / tree view" aria-label="Toggle grid or tree view">▦</button>
     <button class="btn primary" id="spawnBtn">+ Spawn</button>
     <button class="btn icon ghost" id="helpBtn" title="About Menagerie" aria-label="About Menagerie">?</button>
     <button class="btn icon ghost" id="keybarBtn" title="Terminal keys (Esc, Ctrl, arrows…)" aria-label="Toggle terminal key bar">⌨</button>
@@ -481,6 +498,7 @@
     <div class="modal" role="dialog" aria-label="Spawn agent">
       <header><h2>Spawn agent</h2><span class="spacer"></span><button class="btn icon ghost" data-close>✕</button></header>
       <div class="body">
+        <div id="spawnParentChip" class="spawn-parent-chip" style="display:none"></div>
         <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select></div>
         <div class="field"><label for="spawnAgent">Agent</label><select id="spawnAgent"></select></div>
         <div class="field" id="customCmdField" style="display:none"><label for="spawnCustomCmd">Custom command</label>
@@ -521,7 +539,7 @@
     // ---- Menagerie app (P4) --------------------------------------------
     // FSA-backed persistence (relays.json + session meta + PTY streams) + replay.
     // Live reconnect-resume is deferred; on reload the browser replays from FSA.
-    const PROTOCOL_VERSION = "1.2";
+    const PROTOCOL_VERSION = "1.3";
     const DEFAULT_LOCAL_URL = "ws://127.0.0.1:7878";
     // Terminal colors follow the active app theme (read from the CSS vars set per theme).
     function termTheme() {
@@ -690,8 +708,8 @@
       }
     }
     // Build a fresh session record from a spawned/listed descriptor.
-    function makeSession(relay, id, agent, transport, startedAt, cwd) {
-      return { id, relayId: relay.id, relayName: relay.name, agent, token: null, transport,
+    function makeSession(relay, id, agent, transport, startedAt, cwd, parentId) {
+      return { id, relayId: relay.id, relayName: relay.name, agent, token: null, transport, parentId: parentId || null,
         status: "running", startedAt, cwd: cwd || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
     }
     function mountTile(sess) {
@@ -712,7 +730,7 @@
       registered(relay) { relay.status = "connected"; relay.error = null; relay.retries = 0; },
       spawned(relay, msg) {
         closeModal("spawnScrim");
-        const sess = makeSession(relay, msg.session_id, msg.agent, pendingTransport.get(msg.client_id) || "pty", Date.now(), pendingCwd.get(msg.client_id) || "");
+        const sess = makeSession(relay, msg.session_id, msg.agent, pendingTransport.get(msg.client_id) || "pty", Date.now(), pendingCwd.get(msg.client_id) || "", msg.parent_session_id);
         sess.token = msg.session_token;
         pendingCwd.delete(msg.client_id); pendingTransport.delete(msg.client_id);
         initAcpState(sess); sessions.set(sess.id, sess); mountTile(sess); writeSessionMeta(sess);
@@ -775,7 +793,7 @@
       // capability for an older relay that omits it. Guessing wrong rebuilt a PTY
       // session as an ACP tile whose output frames were dropped → a hung tile.
       const transport = info.transport || (supportsACP(relay, info.agent) ? "acp" : "pty");
-      const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "");
+      const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "", info.parent_session_id);
       initAcpState(sess); sessions.set(sess.id, sess);
       if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
       send(relay, { type: "attach", session_id: info.session_id });
@@ -795,6 +813,9 @@
       else if (msg.event === "stalled") { if (s.status !== "stalled") beep(); setSessionStatus(s, "stalled"); } // likely looping — sticky until you act
       else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
       else if (msg.event === "idle") setSessionStatus(s, "idle");
+      // child_spawned (v1.2): informational for the parent's owner — the child's own
+      // `spawned` frame already created it with parentId, and handleMessage's trailing
+      // renderAll() reflows the tree. Explicit no-op so it isn't mistaken for unhandled.
     }
     function handleErrorFrame(relay, msg) {
       if (msg.code === "auth_failed") { relay.status = "error"; relay.error = msg.message || "authentication failed"; try { relay.ws.close(); } catch {} return; }
@@ -1371,7 +1392,9 @@
       // PTY shims take the initial task as argv; structured sessions get theirs
       // through the first `prompt` instead.
       const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (tr === "pty" && task ? [task] : []);
-      send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr });
+      const parentId = resolveSpawnParent(relayId); // v1.2: only if a live session on THIS relay
+      spawnChildParentId = null;
+      send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr, parent_session_id: parentId });
       showSpawnResult(tr === "acp" ? "spawning structured session…" : "spawning…", true);
     }
 
@@ -1385,8 +1408,9 @@
       const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen (click to toggle)"; full.setAttribute("aria-label", "Toggle fullscreen"); full.textContent = "⛶";
       full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
       const kill = document.createElement("button"); kill.className = "btn icon ghost"; kill.title = "Kill"; kill.setAttribute("aria-label", "Kill agent"); kill.textContent = "🗑";
-      kill.addEventListener("click", () => signal(sess, "kill"));
-      head.append(dot, title, spacer, full, kill);
+      kill.addEventListener("click", () => killTile(sess));
+      const childBtn = spawnChildBtn(sess);
+      head.append(dot, title, spacer, full, ...(childBtn ? [childBtn] : []), kill);
       head.addEventListener("click", (e) => { if (e.target !== kill && e.target !== full) focusTile(sess); });
       head.addEventListener("dblclick", (e) => { if (e.target !== kill) toggleFullscreen(tile); });
       makeDraggable(tile, head);
@@ -1453,7 +1477,45 @@
     }
     function setSessionStatus(sess, status) { sess.status = status; if (sess.dot) { sess.dot.className = "dot-status s-" + status; sess.dot.setAttribute("aria-label", status); } updateAttention(); }
     function sendInput(sess, data) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || sess.status === "exited" || !sess.token) return; if (sess.status === "stalled") setSessionStatus(sess, "running"); send(relay, { type: "input", session_id: sess.id, session_token: sess.token, data }); }
-    function signal(sess, sig, cols, rows) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } send(relay, m); }
+    function signal(sess, sig, cols, rows, subtree) { const relay = relays.find((r) => r.id === sess.relayId); if (!relay || !sess.token) return; const m = { type: "signal", session_id: sess.id, session_token: sess.token, signal: sig }; if (sig === "resize") { m.cols = cols; m.rows = rows; } if (subtree) m.subtree = true; send(relay, m); }
+    // The ⑃ spawn-child tile button, only when the relay advertises hosts_children.
+    function spawnChildBtn(sess) {
+      const relay = relays.find((r) => r.id === sess.relayId);
+      if (!relay || !(relay.hello && relay.hello.hosts_children)) return null;
+      const b = document.createElement("button"); b.className = "btn icon ghost"; b.title = "Spawn child agent"; b.setAttribute("aria-label", "Spawn child agent"); b.textContent = "⑃";
+      b.addEventListener("click", (e) => { e.stopPropagation(); openSpawnChild(sess); });
+      return b;
+    }
+    // Kill from a tile — a childless session kills straight; a parent opens the
+    // subtree-kill modal (C4.3). liveChildren counts this session's live children.
+    function liveChildren(id) { return [...sessions.values()].filter((s) => !s.replay && s.parentId === id).length; }
+    function killTile(sess) {
+      const n = liveChildren(sess.id);
+      if (n > 0) openSubtreeKill(sess, n); else signal(sess, "kill");
+    }
+    // In-app subtree-kill confirm (UX-ref §5) — never a native confirm(). Default is
+    // kill-the-subtree; "only this" leaves the children running (they orphan).
+    function openSubtreeKill(sess, n) {
+      const scrim = document.createElement("div"); scrim.className = "scrim open"; scrim.id = "subtreeKillScrim"; scrim.style.zIndex = "120";
+      scrim.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Kill subtree">
+        <header><h2>Kill subtree?</h2><span class="spacer"></span><button class="btn icon ghost" data-x aria-label="Cancel">✕</button></header>
+        <div class="body">
+          <p class="help-lede"><strong>${escapeHtml(sess.agent)}</strong> has ${n} child${n === 1 ? "" : "ren"}.</p>
+          <label class="stk-opt"><input type="radio" name="stk" value="only"> Kill only ${escapeHtml(sess.agent)} <span class="mut">(children keep running, promoted to root)</span></label>
+          <label class="stk-opt"><input type="radio" name="stk" value="subtree" checked> Kill ${escapeHtml(sess.agent)} and all ${n} child${n === 1 ? "" : "ren"}</label>
+          <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn" data-x>Cancel</button><button class="btn danger" data-go>Kill ${n + 1}</button></div>
+        </div></div>`;
+      document.body.appendChild(scrim);
+      const close = () => { scrim.remove(); document.removeEventListener("keydown", onKey, true); };
+      const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); close(); } };
+      document.addEventListener("keydown", onKey, true);
+      scrim.addEventListener("click", (e) => { if (e.target === scrim || e.target.hasAttribute("data-x")) close(); });
+      scrim.querySelector("[data-go]").addEventListener("click", () => {
+        const subtree = scrim.querySelector('input[name="stk"]:checked').value === "subtree";
+        signal(sess, "kill", null, null, subtree);
+        close();
+      });
+    }
     function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
     function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input" || s.status === "stalled").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
     // Soft two-tone chime when an agent transitions into needs_input. Web Audio,
@@ -1497,9 +1559,10 @@
       const full = document.createElement("button"); full.className = "btn icon ghost"; full.title = "Fullscreen"; full.textContent = "⛶";
       full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(tile); });
       const kill = document.createElement("button"); kill.className = "btn icon ghost"; kill.title = "Kill"; kill.textContent = "🗑";
-      kill.addEventListener("click", () => signal(sess, "kill"));
-      head.append(dot, title, spacer, drill, full, kill);
-      head.addEventListener("click", (e) => { if (![kill, full, drill].includes(e.target)) openDrill(sess); });
+      kill.addEventListener("click", () => killTile(sess));
+      const childBtn = spawnChildBtn(sess);
+      head.append(dot, title, spacer, drill, full, ...(childBtn ? [childBtn] : []), kill);
+      head.addEventListener("click", (e) => { if (![kill, full, drill, childBtn].includes(e.target)) openDrill(sess); });
       head.addEventListener("dblclick", (e) => { if (![kill, drill].includes(e.target)) toggleFullscreen(tile); });
       makeDraggable(tile, head);
       const streamEl = document.createElement("div"); streamEl.className = "tile-stream";
@@ -1586,16 +1649,121 @@
       const ses = $("sbSessions"); ses.innerHTML = "";
       const live = [...sessions.values()].filter((s) => !s.replay);
       if (live.length === 0) ses.innerHTML = `<div class="sb-empty">none running</div>`;
-      else for (const s of live) {
-        const row = document.createElement("div"); row.className = "sb-row"; row.dataset.sid = s.id;
-        if (s.tile && s.tile.classList.contains("focused")) row.classList.add("active");
-        const dot = document.createElement("span"); dot.className = "dot-status s-" + s.status;
-        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = s.agent;
-        const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = s.relayName || "";
-        row.append(dot, nm, mt);
-        row.addEventListener("click", () => focusTile(s));
-        ses.appendChild(row);
+      else renderSidebarSessions(ses, live);
+    }
+
+    // ===== supervisor tree (v1.2) =====================================
+    // treeViewPref: null = auto (tree once any session has a parent), else the
+    // user's explicit choice. collapsedParents persists per-parent collapse.
+    let treeViewPref = null; try { const v = localStorage.getItem("menagerie-tree-view"); if (v === "1") treeViewPref = true; else if (v === "0") treeViewPref = false; } catch {}
+    const collapsedParents = new Set(); try { (JSON.parse(localStorage.getItem("menagerie-collapsed") || "[]") || []).forEach((x) => collapsedParents.add(x)); } catch {}
+    function persistCollapsed() {
+      for (const id of collapsedParents) if (!sessions.has(id)) collapsedParents.delete(id); // don't accrue dead ids
+      try { localStorage.setItem("menagerie-collapsed", JSON.stringify([...collapsedParents])); } catch {}
+    }
+    function treeActive(live) { return treeViewPref !== null ? treeViewPref : live.some((s) => s.parentId); }
+    // Build parent→children and the root set from the live sessions. A session
+    // whose parent isn't live is an orphan → rendered at root with a marker.
+    function childrenIndex(live) {
+      const byId = new Map(live.map((s) => [s.id, s]));
+      const kids = new Map(), roots = [];
+      for (const s of live) {
+        // A child links only to a live, non-self, non-exited parent — an exited
+        // parent promotes its children to root (M1), self-parent can't nest (H2).
+        const parent = s.parentId && s.parentId !== s.id ? byId.get(s.parentId) : null;
+        if (parent && parent.status !== "exited") { (kids.get(s.parentId) || kids.set(s.parentId, []).get(s.parentId)).push(s); }
+        else roots.push(s);
       }
+      // Cycle guard (H2): a session unreachable from any root (A↔B) would vanish —
+      // root it so every live session renders exactly once.
+      const reachable = new Set();
+      const mark = (id) => { if (reachable.has(id)) return; reachable.add(id); for (const c of (kids.get(id) || [])) mark(c.id); };
+      for (const r of roots) mark(r.id);
+      for (const s of live) if (!reachable.has(s.id)) roots.push(s);
+      return { kids, roots, byId };
+    }
+    // The disclosure triangle (parent) or an indent spacer (nested leaf).
+    function sbPrefix(row, s, depth, hasKids) {
+      if (hasKids) {
+        const tri = document.createElement("span"); tri.className = "sb-tri" + (collapsedParents.has(s.id) ? "" : " open"); tri.textContent = "▸";
+        tri.addEventListener("click", (e) => { e.stopPropagation(); toggleCollapsed(s.id); });
+        row.appendChild(tri);
+      } else if (depth) { const sp = document.createElement("span"); sp.className = "sb-tri-spacer"; row.appendChild(sp); }
+    }
+    function sbSessionRow(s, depth, kids) {
+      const row = document.createElement("div"); row.className = "sb-row"; row.dataset.sid = s.id;
+      if (depth) row.style.paddingLeft = (8 + depth * 16) + "px";
+      if (s.tile && s.tile.classList.contains("focused")) row.classList.add("active");
+      const n = (kids.get(s.id) || []).length;
+      sbPrefix(row, s, depth, n > 0);
+      const dot = document.createElement("span"); dot.className = "dot-status s-" + s.status;
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = s.agent;
+      row.append(dot, nm);
+      const orphan = s.parentId && !kids.has(s.parentId) && depth === 0;
+      if (orphan) { const o = document.createElement("span"); o.className = "sb-orphan"; o.title = "parent exited"; o.textContent = "⤺"; row.appendChild(o); }
+      if (n) { const pill = document.createElement("span"); pill.className = "sb-count"; pill.textContent = "⑃" + n; row.appendChild(pill); }
+      const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = s.relayName || "";
+      row.appendChild(mt);
+      row.addEventListener("click", () => focusTile(s));
+      return row;
+    }
+    function renderSidebarSessions(container, live) {
+      if (!treeActive(live)) { for (const s of live) container.appendChild(sbSessionRow(s, 0, new Map())); return; }
+      const { kids, roots } = childrenIndex(live);
+      const seen = new Set();
+      const emit = (s, depth) => {
+        if (seen.has(s.id)) return; seen.add(s.id); // defensive against a residual cycle
+        container.appendChild(sbSessionRow(s, depth, kids));
+        if (collapsedParents.has(s.id)) return;
+        for (const c of (kids.get(s.id) || [])) emit(c, depth + 1);
+      };
+      for (const r of roots) emit(r, 0);
+    }
+    function toggleCollapsed(id) { if (collapsedParents.has(id)) collapsedParents.delete(id); else collapsedParents.add(id); persistCollapsed(); renderAll(); }
+    function setTreeView(on) { treeViewPref = on; try { localStorage.setItem("menagerie-tree-view", on ? "1" : "0"); } catch {} updateTreeToggle(); renderAll(); }
+    function updateTreeToggle() {
+      const btn = $("treeBtn"); if (!btn) return;
+      const on = treeActive([...sessions.values()].filter((s) => !s.replay));
+      btn.textContent = on ? "⇊" : "▦";
+      btn.title = on ? "Tree view (click for flat grid)" : "Grid view (click for tree)";
+      btn.classList.toggle("active", on);
+    }
+    // Grid grouping: in tree view the grid becomes a vertical stack ordered by the
+    // tree, children indented one step under their parent with a left band; a
+    // collapsed parent hides its subtree's tiles. Flat (Grid) view is untouched.
+    function regroupGrid() {
+      const grid = $("grid");
+      if (grid.querySelector(".tile.dragging")) return; // don't fight an in-progress drag
+      const live = [...sessions.values()].filter((s) => !s.replay && s.tile);
+      const tree = treeActive(live);
+      grid.classList.toggle("tree", tree);
+      if (!tree) {
+        for (const s of live) { s.tile.style.marginLeft = ""; s.tile.style.display = ""; s.tile.classList.remove("tile-child"); }
+        return;
+      }
+      const { kids, roots } = childrenIndex(live);
+      const order = [];
+      const seen = new Set();
+      const walk = (s, depth, hidden) => {
+        if (seen.has(s.id)) return; seen.add(s.id); // cycle guard (H2)
+        order.push({ s, depth, hidden });
+        const nextHidden = hidden || collapsedParents.has(s.id);
+        for (const c of (kids.get(s.id) || [])) walk(c, depth + 1, nextHidden);
+      };
+      for (const r of roots) walk(r, 0, false);
+      // Styles are idempotent and don't move nodes — always apply.
+      for (const { s, depth, hidden } of order) {
+        s.tile.style.marginLeft = depth ? (depth * 24) + "px" : "";
+        s.tile.style.display = hidden ? "none" : "";
+        s.tile.classList.toggle("tile-child", depth > 0);
+      }
+      // Reorder ONLY when the DOM order actually differs — moving a tile node blurs
+      // a focused xterm and drops selection/scroll, and renderAll fires on every
+      // frame, so a blind re-append thrashed every streaming session (H1).
+      const desired = order.map((o) => o.s.tile);
+      const current = [...grid.querySelectorAll(".tile")];
+      const sameOrder = desired.length === current.length && desired.every((t, i) => t === current[i]);
+      if (!sameOrder) for (const t of desired) grid.appendChild(t);
     }
     // Update only the active highlight without rebuilding the list (called on focus changes).
     function syncSidebarActive() {
@@ -1728,12 +1896,39 @@
       }
       return row;
     }
+    // v1.2: the spawn dialog can be scoped to a parent (spawn-child). Transient —
+    // cleared when the plain + Spawn opens it, and after a spawn is sent.
+    let spawnChildParentId = null;
+    function openSpawnDialog() { spawnChildParentId = null; openModal("spawnScrim"); }
+    function resolveSpawnParent(relayId) {
+      const p = spawnChildParentId && sessions.get(spawnChildParentId);
+      return p && p.relayId === relayId ? spawnChildParentId : undefined;
+    }
+    function openSpawnChild(sess) {
+      const relay = relays.find((r) => r.id === sess.relayId);
+      if (!relay || !(relay.hello && relay.hello.hosts_children)) return; // relay can't host children
+      spawnChildParentId = sess.id;
+      openModal("spawnScrim");
+      $("spawnRelay").value = sess.relayId; renderAgentOptions();
+      if (sess.cwd) $("spawnCwd").value = sess.cwd; // inherit the parent's cwd (spec Q2)
+    }
     function renderSpawnDialog() {
       const relaySel = $("spawnRelay"); const prev = relaySel.value; relaySel.innerHTML = "";
       const connected = relays.filter((r) => r.status === "connected");
       for (const r of connected) { const o = document.createElement("option"); o.value = r.id; o.textContent = r.name; relaySel.appendChild(o); }
       if (connected.some((r) => r.id === prev)) relaySel.value = prev;
       renderAgentOptions(); $("doSpawnBtn").disabled = connected.length === 0;
+      renderSpawnParentChip();
+    }
+    // The "child of: X" chip only shows when the parent is a live session on the
+    // CURRENTLY-selected relay — otherwise the spawn would omit parent_session_id
+    // (resolveSpawnParent) and the chip would lie (L1).
+    function renderSpawnParentChip() {
+      const chip = $("spawnParentChip");
+      const parent = spawnChildParentId && sessions.get(spawnChildParentId);
+      const onSelectedRelay = parent && parent.relayId === $("spawnRelay").value;
+      if (onSelectedRelay) { chip.style.display = ""; chip.innerHTML = `child of: <strong>${escapeHtml(parent.agent)}</strong>`; }
+      else { chip.style.display = "none"; if (!parent) spawnChildParentId = null; }
     }
     function renderAgentOptions() {
       const agentSel = $("spawnAgent"); agentSel.innerHTML = "";
@@ -1750,7 +1945,7 @@
     }
     // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
-    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); }
+    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid(); }
 
     // ===== workspace overlay + modals =================================
     function openWorkspaceOverlay(mode, handle) {
@@ -1912,10 +2107,11 @@
 
     // ===== wiring =====================================================
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
-    $("spawnBtn").addEventListener("click", () => openModal("spawnScrim"));
+    $("spawnBtn").addEventListener("click", openSpawnDialog);
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("helpTourBtn").addEventListener("click", () => { closeModal("helpScrim"); setTimeout(() => showTour({ force: true }), 60); });
     $("themeBtn").addEventListener("click", toggleTheme);
+    $("treeBtn").addEventListener("click", () => setTreeView(!treeActive([...sessions.values()].filter((s) => !s.replay))));
     document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest(".copybtn"); if (b && b.dataset.cmd) { e.preventDefault(); copyText(b.dataset.cmd, b); } });
     // ☰ toggles the sidebar: a persistent collapse on desktop, an off-canvas drawer on mobile.
     const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
@@ -1989,6 +2185,7 @@
     if (window.visualViewport) { window.visualViewport.addEventListener("resize", positionKeybar); window.visualViewport.addEventListener("scroll", positionKeybar); }
     $("spawnRelay").addEventListener("change", renderAgentOptions);
     $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
+    $("spawnRelay").addEventListener("change", renderSpawnParentChip);
     $("addRelayBtn").addEventListener("click", () => {
       const url = $("relayUrl").value.trim(), token = $("relayToken").value.trim(), err = $("addRelayError"); err.textContent = "";
       if (!/^wss?:\/\//.test(url)) { err.textContent = "URL must start with ws:// or wss://"; return; }
@@ -2029,11 +2226,22 @@
     // Single-key grid actions (chord digits and the drill-only keys are handled
     // separately in hotkeyGrid). Each owns its own preventDefault.
     const GRID_KEYS = {
-      n: (e) => { openModal("spawnScrim"); e.preventDefault(); },
+      n: (e) => { openSpawnDialog(); e.preventDefault(); },
       g: () => { _gPending = true; _gTimer = setTimeout(() => { _gPending = false; }, 1200); },
+      t: () => { setTreeView(!treeActive([...sessions.values()].filter((s) => !s.replay))); },
+      c: (e) => { const f = document.querySelector(".tile.focused"); const s = f && sessions.get(f.dataset.sid); if (s) openSpawnChild(s); e.preventDefault(); },
       f: (e) => { toggleFullscreen(document.querySelector(".tile.focused") || tilesInOrder()[0]); e.preventDefault(); },
       Tab: (e) => { cycleFocus(e.shiftKey ? -1 : 1); e.preventDefault(); },
     };
+    // ← / → collapse / expand the focused parent's subtree (only when it has children).
+    function hotkeyArrowCollapse(e) {
+      const f = document.querySelector(".tile.focused"); const s = f && sessions.get(f.dataset.sid);
+      if (!s || !liveChildren(s.id)) return false;
+      const collapsed = collapsedParents.has(s.id);
+      if (e.key === "ArrowLeft" && !collapsed) { toggleCollapsed(s.id); e.preventDefault(); return true; }
+      if (e.key === "ArrowRight" && collapsed) { toggleCollapsed(s.id); e.preventDefault(); return true; }
+      return false;
+    }
     function hotkeyEnter(e) {
       const f = document.querySelector(".tile.focused");
       const s = f && sessions.get(f.dataset.sid);
@@ -2043,6 +2251,7 @@
       if (hotkeyChord(e)) return;
       const h = GRID_KEYS[e.key];
       if (h) { h(e); return; }
+      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && hotkeyArrowCollapse(e)) return;
       if (drillOpen() && (e.key === "d" || e.key === "D")) { $("rawlogBtn").click(); e.preventDefault(); return; }
       if (e.key === "Enter") hotkeyEnter(e);
     }
@@ -2068,7 +2277,8 @@
     // seam methods reach them through closure, so nothing on the page can read a
     // token off this global. FS is a directory handle, not a secret.
     window.__menagerie = { FS,
-      test: { async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
+      test: { _sent: [], // frames the demo's fake relay "sent" (for verification)
+              async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
               async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); },
               // Fabricate a rendered tile with no relay (input no-ops) — for offline layout/keyboard testing.
               fakeSession(agent) {
@@ -2101,6 +2311,41 @@
               },
               serializeStream(id) { const s = sessions.get(id); return s ? serializeStream(s) : null; },
               openDrillById(id) { const s = sessions.get(id); if (s && s.transport === "acp") openDrill(s); },
+              // A child whose parent isn't present (parent exited before re-attach) —
+              // must render at root with the ⤺ marker, not vanish. Returns its id.
+              // A hostile relay could self-parent (id===parentId) or form an A↔B cycle;
+              // such sessions must still render (rooted), never vanish. Returns their ids.
+              fakeCycle() {
+                const mk = (id, parentId) => { const s = { id, relayId: "fake", relayName: "localhost", agent: "worker", transport: "acp", parentId, status: "running", startedAt: Date.now(), token: "fake-token", cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false }; initAcpState(s); sessions.set(id, s); createStreamTile(s); return id; };
+                const self = mk("cyc-self", "cyc-self");        // self-parent
+                mk("cyc-a", "cyc-b"); mk("cyc-b", "cyc-a");     // A↔B cycle
+                renderAll();
+                return [self, "cyc-a", "cyc-b"];
+              },
+              fakeOrphan() {
+                const s = { id: "orphan-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent: "worker",
+                  transport: "acp", parentId: "ghost-parent-not-live", status: "running", startedAt: Date.now(), token: "fake-token", cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
+                initAcpState(s); sessions.set(s.id, s); createStreamTile(s); renderAll();
+                return s.id;
+              },
+              // Offline supervisor tree — a parent + N children (parentId set) for
+              // tree-view layout testing without a relay. Returns the parent id.
+              fakeTree(nChildren) {
+                if (!relays.find((r) => r.id === "fake")) {
+                  const sent = window.__menagerie.test._sent;
+                  relays.push({ id: "fake", name: "localhost", url: "ws://fake", status: "connected", hello: { hosts_children: true, agents: ["omp", "claude-code"], host_os: "darwin", host_arch: "arm64", transports: ["pty", "acp"] }, ws: { readyState: 1, send: (s) => { try { sent.push(JSON.parse(s)); } catch (e) { void e; } } } });
+                }
+                const mk = (agent, parentId, status) => {
+                  const s = { id: (parentId ? "child" : "root") + "-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent,
+                    transport: "acp", parentId: parentId || null, status: status || "running", startedAt: Date.now(), token: "fake-token", cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
+                  initAcpState(s); sessions.set(s.id, s); createStreamTile(s); return s.id;
+                };
+                const parent = mk("orchestrator", null, "working");
+                const statuses = ["running", "needs_input", "idle"];
+                for (let i = 0; i < (nChildren || 4); i++) mk("worker", parent, statuses[i % statuses.length]);
+                renderAll();
+                return parent;
+              },
               // C5 assertion helper: replay a persisted acp-jsonl log through the live render path
               // and return the resulting stream serialization (compare against the live capture).
               async replaySerialize(metaId) {

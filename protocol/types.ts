@@ -1,7 +1,7 @@
 /**
  * Menagerie relay protocol — canonical message type definitions.
  *
- *   protocol-v1.2
+ *   protocol-v1.3
  *
  * Single source of truth for message shapes. The browser app consumes these
  * types directly; the Go relay hand-ports them into `internal/protocol/`.
@@ -18,7 +18,7 @@
  * swappable without a protocol major. See `acp-pin.md` + `acp-types.ts`.
  */
 
-export const PROTOCOL_VERSION = "1.2" as const;
+export const PROTOCOL_VERSION = "1.3" as const;
 
 // ---- Shared scalar types --------------------------------------------------
 
@@ -105,6 +105,7 @@ export interface SpawnedMessage extends BaseMessage {
   agent: string;
   pid: number;
   started_at: string; // ISO-8601 UTC
+  parent_session_id?: string; // protocol 1.3; set when spawned as a child (supervisor tree)
 }
 
 /**
@@ -145,6 +146,7 @@ export interface SessionInfo {
   started_at: string; // ISO-8601 UTC
   pid: number;
   transport?: Transport; // protocol 1.2; absent ⇒ pty (so re-attach doesn't guess from agent capability)
+  parent_session_id?: string; // protocol 1.3; present for a child session, so re-attach rebuilds the tree
 }
 
 /** Live session list, sent right after `registered`, so a reconnecting client can re-attach (protocol 1.1). */
@@ -183,6 +185,9 @@ export interface SpawnMessage extends BaseMessage {
   client_id: string; // client-generated UUID, echoed back in `spawned`
   /** Absent ⇒ "pty", so stored pre-1.2 session definitions keep working. */
   transport?: Transport;
+  /** protocol 1.3: spawn this as a child of a live session (supervisor tree). An
+   *  unknown/dead parent is ignored — the session spawns at root, never fails. */
+  parent_session_id?: string;
 }
 
 /** Send input (keystrokes) to a session's PTY. */
@@ -201,6 +206,7 @@ export interface SignalMessage extends BaseMessage {
   signal: SignalKind; // kill=SIGKILL, interrupt=SIGINT, resize=set window size
   cols?: number; // resize only
   rows?: number; // resize only
+  subtree?: boolean; // protocol 1.3; kill only — also kill every descendant (leaf-first)
 }
 
 /**
