@@ -7,7 +7,7 @@ Spec: [`docs/design/v1.2-spec.md`](docs/design/v1.2-spec.md) (locked 2026-08-27)
 |---|---|
 | C0 protocol 1.3 + fixtures | **complete** (2026-08-27) — version bumped 1.2→1.3 across types.ts/messages.go/index.html; optional fields added (`parent_session_id` on spawn/spawned/SessionInfo, `subtree` on signal); 2 new fixtures (signal-subtree, event-child-spawned); validator 22/22, 19/19 types; `go test -race` green. No behavior yet. |
 | C1 relay parentage | **complete** (2026-08-27) — parent recorded on spawn (validated live, roots on a stale parent, no cycle possible for a new id); Spawned echoes parent; child_spawned emitted to the parent (PTY+ACP); listSessions carries parent; hosts_children=true. Tests: linkage+event+re-attach, unknown-parent-roots. |
-| C2 relay subtree kill | not-started |
+| C2 relay subtree kill | **complete** (2026-08-27) — signal{kill,subtree} kills the session + all descendants leaf-first (post-order snapshot under s.mu), each emitting exited; authorized by the parent's token. Tests: subtree-kill-exits-all (3 sessions) + subtreeLeafFirst ordering unit. |
 | §7 UX gate | **locked** (v1.2-ux-reference.md) |
 | C3 browser tree model + sidebar tree | not-started |
 | C4 grid grouping + spawn-child + kill modal | not-started |
