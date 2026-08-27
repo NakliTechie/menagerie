@@ -86,6 +86,11 @@
     .sb-row.active { background: var(--elev); }
     .sb-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sb-row .mt { color: var(--faint); font-size: 11px; flex: 0 0 auto; }
+    .sb-tri { flex: 0 0 auto; width: 12px; color: var(--muted); font-size: 10px; cursor: pointer; transition: transform .12s ease; user-select: none; }
+    .sb-tri.open { transform: rotate(90deg); }
+    .sb-tri-spacer { flex: 0 0 auto; width: 12px; }
+    .sb-count { flex: 0 0 auto; font-size: 10px; color: var(--faint); background: var(--panel-2); border-radius: 8px; padding: 0 5px; }
+    .sb-orphan { flex: 0 0 auto; font-size: 10px; color: var(--yellow); }
     .sb-empty { color: var(--faint); font-size: 12px; padding: 4px 8px; }
     .main { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px 18px 56px; }
 
@@ -337,6 +342,7 @@
     <span class="wordmark">Menagerie<span class="dot">.</span></span>
     <span class="workspace" id="workspace">no workspace</span>
     <span class="spacer"></span>
+    <button class="btn icon ghost" id="treeBtn" title="Grid / tree view" aria-label="Toggle grid or tree view">▦</button>
     <button class="btn primary" id="spawnBtn">+ Spawn</button>
     <button class="btn icon ghost" id="helpBtn" title="About Menagerie" aria-label="About Menagerie">?</button>
     <button class="btn icon ghost" id="keybarBtn" title="Terminal keys (Esc, Ctrl, arrows…)" aria-label="Toggle terminal key bar">⌨</button>
@@ -690,8 +696,8 @@
       }
     }
     // Build a fresh session record from a spawned/listed descriptor.
-    function makeSession(relay, id, agent, transport, startedAt, cwd) {
-      return { id, relayId: relay.id, relayName: relay.name, agent, token: null, transport,
+    function makeSession(relay, id, agent, transport, startedAt, cwd, parentId) {
+      return { id, relayId: relay.id, relayName: relay.name, agent, token: null, transport, parentId: parentId || null,
         status: "running", startedAt, cwd: cwd || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
     }
     function mountTile(sess) {
@@ -712,7 +718,7 @@
       registered(relay) { relay.status = "connected"; relay.error = null; relay.retries = 0; },
       spawned(relay, msg) {
         closeModal("spawnScrim");
-        const sess = makeSession(relay, msg.session_id, msg.agent, pendingTransport.get(msg.client_id) || "pty", Date.now(), pendingCwd.get(msg.client_id) || "");
+        const sess = makeSession(relay, msg.session_id, msg.agent, pendingTransport.get(msg.client_id) || "pty", Date.now(), pendingCwd.get(msg.client_id) || "", msg.parent_session_id);
         sess.token = msg.session_token;
         pendingCwd.delete(msg.client_id); pendingTransport.delete(msg.client_id);
         initAcpState(sess); sessions.set(sess.id, sess); mountTile(sess); writeSessionMeta(sess);
@@ -775,7 +781,7 @@
       // capability for an older relay that omits it. Guessing wrong rebuilt a PTY
       // session as an ACP tile whose output frames were dropped → a hung tile.
       const transport = info.transport || (supportsACP(relay, info.agent) ? "acp" : "pty");
-      const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "");
+      const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "", info.parent_session_id);
       initAcpState(sess); sessions.set(sess.id, sess);
       if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
       send(relay, { type: "attach", session_id: info.session_id });
@@ -1586,16 +1592,70 @@
       const ses = $("sbSessions"); ses.innerHTML = "";
       const live = [...sessions.values()].filter((s) => !s.replay);
       if (live.length === 0) ses.innerHTML = `<div class="sb-empty">none running</div>`;
-      else for (const s of live) {
-        const row = document.createElement("div"); row.className = "sb-row"; row.dataset.sid = s.id;
-        if (s.tile && s.tile.classList.contains("focused")) row.classList.add("active");
-        const dot = document.createElement("span"); dot.className = "dot-status s-" + s.status;
-        const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = s.agent;
-        const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = s.relayName || "";
-        row.append(dot, nm, mt);
-        row.addEventListener("click", () => focusTile(s));
-        ses.appendChild(row);
+      else renderSidebarSessions(ses, live);
+    }
+
+    // ===== supervisor tree (v1.2) =====================================
+    // treeViewPref: null = auto (tree once any session has a parent), else the
+    // user's explicit choice. collapsedParents persists per-parent collapse.
+    let treeViewPref = null; try { const v = localStorage.getItem("menagerie-tree-view"); if (v === "1") treeViewPref = true; else if (v === "0") treeViewPref = false; } catch {}
+    const collapsedParents = new Set(); try { (JSON.parse(localStorage.getItem("menagerie-collapsed") || "[]") || []).forEach((x) => collapsedParents.add(x)); } catch {}
+    function persistCollapsed() { try { localStorage.setItem("menagerie-collapsed", JSON.stringify([...collapsedParents])); } catch {} }
+    function treeActive(live) { return treeViewPref !== null ? treeViewPref : live.some((s) => s.parentId); }
+    // Build parent→children and the root set from the live sessions. A session
+    // whose parent isn't live is an orphan → rendered at root with a marker.
+    function childrenIndex(live) {
+      const byId = new Map(live.map((s) => [s.id, s]));
+      const kids = new Map(), roots = [];
+      for (const s of live) {
+        if (s.parentId && byId.has(s.parentId)) { (kids.get(s.parentId) || kids.set(s.parentId, []).get(s.parentId)).push(s); }
+        else roots.push(s);
       }
+      return { kids, roots, byId };
+    }
+    // The disclosure triangle (parent) or an indent spacer (nested leaf).
+    function sbPrefix(row, s, depth, hasKids) {
+      if (hasKids) {
+        const tri = document.createElement("span"); tri.className = "sb-tri" + (collapsedParents.has(s.id) ? "" : " open"); tri.textContent = "▸";
+        tri.addEventListener("click", (e) => { e.stopPropagation(); toggleCollapsed(s.id); });
+        row.appendChild(tri);
+      } else if (depth) { const sp = document.createElement("span"); sp.className = "sb-tri-spacer"; row.appendChild(sp); }
+    }
+    function sbSessionRow(s, depth, kids) {
+      const row = document.createElement("div"); row.className = "sb-row"; row.dataset.sid = s.id;
+      if (depth) row.style.paddingLeft = (8 + depth * 16) + "px";
+      if (s.tile && s.tile.classList.contains("focused")) row.classList.add("active");
+      const n = (kids.get(s.id) || []).length;
+      sbPrefix(row, s, depth, n > 0);
+      const dot = document.createElement("span"); dot.className = "dot-status s-" + s.status;
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = s.agent;
+      row.append(dot, nm);
+      const orphan = s.parentId && !kids.has(s.parentId) && depth === 0;
+      if (orphan) { const o = document.createElement("span"); o.className = "sb-orphan"; o.title = "parent exited"; o.textContent = "⤺"; row.appendChild(o); }
+      if (n) { const pill = document.createElement("span"); pill.className = "sb-count"; pill.textContent = "⑃" + n; row.appendChild(pill); }
+      const mt = document.createElement("span"); mt.className = "mt"; mt.textContent = s.relayName || "";
+      row.appendChild(mt);
+      row.addEventListener("click", () => focusTile(s));
+      return row;
+    }
+    function renderSidebarSessions(container, live) {
+      if (!treeActive(live)) { for (const s of live) container.appendChild(sbSessionRow(s, 0, new Map())); return; }
+      const { kids, roots } = childrenIndex(live);
+      const emit = (s, depth) => {
+        container.appendChild(sbSessionRow(s, depth, kids));
+        if (collapsedParents.has(s.id)) return;
+        for (const c of (kids.get(s.id) || [])) emit(c, depth + 1);
+      };
+      for (const r of roots) emit(r, 0);
+    }
+    function toggleCollapsed(id) { if (collapsedParents.has(id)) collapsedParents.delete(id); else collapsedParents.add(id); persistCollapsed(); renderAll(); }
+    function setTreeView(on) { treeViewPref = on; try { localStorage.setItem("menagerie-tree-view", on ? "1" : "0"); } catch {} updateTreeToggle(); renderAll(); }
+    function updateTreeToggle() {
+      const btn = $("treeBtn"); if (!btn) return;
+      const on = treeActive([...sessions.values()].filter((s) => !s.replay));
+      btn.textContent = on ? "⇊" : "▦";
+      btn.title = on ? "Tree view (click for flat grid)" : "Grid view (click for tree)";
+      btn.classList.toggle("active", on);
     }
     // Update only the active highlight without rebuilding the list (called on focus changes).
     function syncSidebarActive() {
@@ -1750,7 +1810,7 @@
     }
     // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
-    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); }
+    function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); }
 
     // ===== workspace overlay + modals =================================
     function openWorkspaceOverlay(mode, handle) {
@@ -1916,6 +1976,7 @@
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("helpTourBtn").addEventListener("click", () => { closeModal("helpScrim"); setTimeout(() => showTour({ force: true }), 60); });
     $("themeBtn").addEventListener("click", toggleTheme);
+    $("treeBtn").addEventListener("click", () => setTreeView(!treeActive([...sessions.values()].filter((s) => !s.replay))));
     document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest(".copybtn"); if (b && b.dataset.cmd) { e.preventDefault(); copyText(b.dataset.cmd, b); } });
     // ☰ toggles the sidebar: a persistent collapse on desktop, an off-canvas drawer on mobile.
     const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
@@ -2031,6 +2092,7 @@
     const GRID_KEYS = {
       n: (e) => { openModal("spawnScrim"); e.preventDefault(); },
       g: () => { _gPending = true; _gTimer = setTimeout(() => { _gPending = false; }, 1200); },
+      t: () => { setTreeView(!treeActive([...sessions.values()].filter((s) => !s.replay))); },
       f: (e) => { toggleFullscreen(document.querySelector(".tile.focused") || tilesInOrder()[0]); e.preventDefault(); },
       Tab: (e) => { cycleFocus(e.shiftKey ? -1 : 1); e.preventDefault(); },
     };
@@ -2101,6 +2163,20 @@
               },
               serializeStream(id) { const s = sessions.get(id); return s ? serializeStream(s) : null; },
               openDrillById(id) { const s = sessions.get(id); if (s && s.transport === "acp") openDrill(s); },
+              // Offline supervisor tree — a parent + N children (parentId set) for
+              // tree-view layout testing without a relay. Returns the parent id.
+              fakeTree(nChildren) {
+                const mk = (agent, parentId, status) => {
+                  const s = { id: (parentId ? "child" : "root") + "-" + crypto.randomUUID(), relayId: "fake", relayName: "localhost", agent,
+                    transport: "acp", parentId: parentId || null, status: status || "running", startedAt: Date.now(), token: null, cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
+                  initAcpState(s); sessions.set(s.id, s); createStreamTile(s); return s.id;
+                };
+                const parent = mk("orchestrator", null, "working");
+                const statuses = ["running", "needs_input", "idle"];
+                for (let i = 0; i < (nChildren || 4); i++) mk("worker", parent, statuses[i % statuses.length]);
+                renderAll();
+                return parent;
+              },
               // C5 assertion helper: replay a persisted acp-jsonl log through the live render path
               // and return the resulting stream serialization (compare against the live capture).
               async replaySerialize(metaId) {
