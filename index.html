@@ -41,6 +41,7 @@
       --green: #4a6b2a; --yellow: #b06f12; --red: #c0392b; --orange: #cf6a1e; --grey: #b1aea4;
       --btn-hover: #e3e2db;
       --term-bg: #ffffff; --term-fg: #1c1815; --term-cursor: #8b3a1f; --term-sel: #d9e2f0;
+      --tour-scrim: rgba(28, 24, 21, .54);
       --radius: 10px; --radius-sm: 7px;
       --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
       --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -54,6 +55,7 @@
       --green: #34a85a; --yellow: #f0c820; --red: #f0594c; --orange: #e08a3a; --grey: #6b7488;
       --btn-hover: #3c4f78;
       --term-bg: #14203a; --term-fg: #f4ecd8; --term-cursor: #e0573a; --term-sel: #34456a;
+      --tour-scrim: rgba(8, 14, 30, .68);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -336,14 +338,13 @@
 
     /* ---- first-run tour: a spotlight over a real control + a coach card ---- */
     .tour-layer { position: fixed; inset: 0; z-index: 200; }
-    .tour-layer::before { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 62%, transparent); }
-    .tour-spotlight { position: absolute; border-radius: 10px; box-shadow: 0 0 0 3px var(--accent), 0 0 0 9999px color-mix(in srgb, var(--bg) 62%, transparent); transition: top .18s ease, left .18s ease, width .18s ease, height .18s ease; pointer-events: none; }
+    .tour-spotlight { position: absolute; border-radius: 10px; box-shadow: 0 0 0 3px var(--accent), 0 0 0 9999px var(--tour-scrim); transition: top .18s ease, left .18s ease, width .18s ease, height .18s ease; pointer-events: none; }
     .tour-card { position: absolute; visibility: hidden; width: min(340px, calc(100vw - 24px)); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.28); }
     .tour-progress { margin: 0 0 6px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
     .tour-card h2 { margin: 0 0 6px; font-size: 16px; }
     .tour-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
     .tour-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
-    .tour-skip { margin-right: auto; color: var(--faint); }
+    .tour-skip { margin-right: auto; color: var(--muted); }
     @media (max-width: 520px) { .tour-card { padding: 12px; } .tour-actions { flex-wrap: wrap; } }
   </style>
 </head>
