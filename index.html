@@ -182,6 +182,14 @@
     .ws-card .err { color: var(--red); font-size: 12.5px; margin-top: 14px; min-height: 1em; }
     .ws-logo { position: absolute; top: 18px; left: 22px; font-weight: 650; font-size: 16px; letter-spacing: .2px; }
     .ws-logo .dot { color: var(--accent); }
+    .ws-actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+    .ws-actions[hidden], .ws-loader[hidden] { display: none; }
+    .ws-loader { display: flex; justify-content: center; gap: 6px; margin-top: -5px; }
+    .ws-loader span { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: ws-pulse .9s ease-in-out infinite; }
+    .ws-loader span:nth-child(2) { animation-delay: .12s; }
+    .ws-loader span:nth-child(3) { animation-delay: .24s; }
+    @keyframes ws-pulse { 0%, 100% { opacity: .28; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+    @media (prefers-reduced-motion: reduce) { .ws-loader span { animation: none; opacity: .65; } }
 
     /* Help / About modal */
     .help-lede { margin: 0; font-size: 14px; }
@@ -519,13 +527,16 @@
   </div>
 
   <!-- First-launch / reconnect workspace overlay -->
-  <div class="ws-overlay" id="wsOverlay">
+  <div class="ws-overlay open booting" id="wsOverlay" aria-busy="true">
     <div class="ws-logo">Menagerie<span class="dot">.</span></div>
-    <div class="ws-card">
-      <h1 id="wsTitle">Pick a folder to store your Menagerie state</h1>
-      <p id="wsBody">Relays, session metadata, and trajectories live in a folder you choose and own. Nothing leaves your machine.</p>
-      <button class="btn primary lg" id="wsPickBtn">Choose folder…</button>
-      <button class="btn lg" id="wsSkipBtn" style="margin-left:8px">Skip (in-memory)</button>
+    <div class="ws-card" role="dialog" aria-modal="true" aria-labelledby="wsTitle" aria-describedby="wsBody">
+      <h1 id="wsTitle">Opening Menagerie</h1>
+      <p id="wsBody">Checking your workspace…</p>
+      <div class="ws-loader" id="wsLoader" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="ws-actions" id="wsActions" hidden>
+        <button class="btn primary lg" id="wsPickBtn">Choose folder…</button>
+        <button class="btn lg" id="wsSkipBtn">Skip (in-memory)</button>
+      </div>
       <div class="err" id="wsErr"></div>
     </div>
   </div>
@@ -598,6 +609,20 @@
     async function idbPut(k, v) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
     async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction("kv", "readonly"); const rq = tx.objectStore("kv").get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
 
+    const WORKSPACE_SPLASH_MIN_MS = 420;
+    const workspaceSplashStartedAt = performance.now();
+    let workspaceBootFinished = false;
+    async function waitForWorkspaceSplash() {
+      const remaining = WORKSPACE_SPLASH_MIN_MS - (performance.now() - workspaceSplashStartedAt);
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+    }
+    async function finishWorkspaceBoot() {
+      await waitForWorkspaceSplash();
+      closeWorkspaceOverlay();
+      if (workspaceBootFinished) return;
+      workspaceBootFinished = true;
+      maybeFirstRunTour();
+    }
     async function pickWorkspace() {
       if (!window.showDirectoryPicker) { wsError("This browser doesn't support the File System Access API. Use Skip (in-memory)."); return false; }
       let handle;
@@ -614,20 +639,23 @@
       return false;
     }
     async function setWorkspace(handle, label) {
+      showWorkspaceLoading();
       FS.handle = handle; FS.label = label || "workspace";
       $("workspace").textContent = label || "workspace";
       $("wsName").textContent = label || "workspace";
-      closeWorkspaceOverlay();
       await rehydrate();
       ensureLocalhostRelay();
       renderAll();
+      await finishWorkspaceBoot();
     }
     async function initWorkspace() {
       let stored = null; try { stored = await idbGet("workspace"); } catch {}
       if (stored) {
         if (await ensurePermission(stored, false)) { await setWorkspace(stored, stored.name); return; }
+        await waitForWorkspaceSplash();
         openWorkspaceOverlay("reconnect", stored);
       } else {
+        await waitForWorkspaceSplash();
         openWorkspaceOverlay("pick");
       }
     }
@@ -1949,12 +1977,19 @@
     function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid(); }
 
     // ===== workspace overlay + modals =================================
-    function openWorkspaceOverlay(mode, handle) {
-      const ov = $("wsOverlay"); ov.classList.add("open"); $("wsErr").textContent = "";
-      if (mode === "reconnect") { $("wsTitle").textContent = "Reconnect your Menagerie folder"; $("wsBody").textContent = `Grant access to "${handle.name}" again to load your relays and trajectories.`; $("wsPickBtn").textContent = "Reconnect"; ov._handle = handle; ov._mode = "reconnect"; }
-      else { $("wsTitle").textContent = "Pick a folder to store your Menagerie state"; $("wsBody").textContent = "Relays, session metadata, and trajectories live in a folder you choose and own. Nothing leaves your machine."; $("wsPickBtn").textContent = "Choose folder…"; ov._mode = "pick"; }
+    function showWorkspaceLoading() {
+      const ov = $("wsOverlay"); ov.classList.add("open", "booting"); ov.setAttribute("aria-busy", "true");
+      $("wsTitle").textContent = "Loading your workspace"; $("wsBody").textContent = "Restoring relays and sessions…";
+      $("wsLoader").hidden = false; $("wsActions").hidden = true; $("wsErr").textContent = "";
     }
-    function closeWorkspaceOverlay() { $("wsOverlay").classList.remove("open"); }
+    function openWorkspaceOverlay(mode, handle) {
+      const ov = $("wsOverlay"); ov.classList.add("open"); ov.classList.remove("booting"); ov.setAttribute("aria-busy", "false");
+      $("wsLoader").hidden = true; $("wsActions").hidden = false; $("wsErr").textContent = "";
+      if (mode === "reconnect") { $("wsTitle").textContent = "Reconnect your Menagerie folder"; $("wsBody").textContent = `Grant access to "${handle.name}" again to load your relays and trajectories.`; $("wsPickBtn").textContent = "Reconnect"; ov._handle = handle; ov._mode = "reconnect"; }
+      else { $("wsTitle").textContent = "Pick a folder to store your Menagerie state"; $("wsBody").textContent = "Relays, session metadata, and trajectories live in a folder you choose and own. Nothing leaves your machine."; $("wsPickBtn").textContent = "Choose folder…"; ov._handle = null; ov._mode = "pick"; }
+      requestAnimationFrame(() => $("wsPickBtn").focus());
+    }
+    function closeWorkspaceOverlay() { const ov = $("wsOverlay"); ov.classList.remove("open", "booting"); ov.setAttribute("aria-busy", "false"); }
     function wsError(t) { $("wsErr").textContent = t; }
 
     function openModal(id) { closeDrawer(); $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") refreshPastSessions(); }
@@ -2097,12 +2132,11 @@
       tourRenderStep();
       return true;
     }
-    // First visit: start the tour once, but only after any blocking overlay
-    // (workspace picker, help) is dismissed — never spotlight behind a scrim.
+    // First visit: the workspace boot sequence calls this only after the splash,
+    // picker/reconnect gate, and rehydration have all finished.
     function maybeFirstRunTour() {
       let done = false; try { done = !!localStorage.getItem(TOUR_KEY); } catch {}
-      if (done) return;
-      if (anyModalOpen()) { setTimeout(maybeFirstRunTour, 500); return; }
+      if (done || !workspaceBootFinished) return;
       showTour();
     }
 
@@ -2200,7 +2234,7 @@
       if (ov._mode === "reconnect" && ov._handle) { if (await ensurePermission(ov._handle, true)) { await setWorkspace(ov._handle, ov._handle.name); } else wsError("Permission denied."); }
       else await pickWorkspace();
     });
-    $("wsSkipBtn").addEventListener("click", () => { FS.handle = null; FS.label = "in-memory"; $("workspace").textContent = "in-memory (not saved)"; $("wsName").textContent = "in-memory (not saved)"; closeWorkspaceOverlay(); ensureLocalhostRelay(); renderAll(); });
+    $("wsSkipBtn").addEventListener("click", async () => { FS.handle = null; FS.label = "in-memory"; $("workspace").textContent = "in-memory (not saved)"; $("wsName").textContent = "in-memory (not saved)"; ensureLocalhostRelay(); renderAll(); await finishWorkspaceBoot(); });
     document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeAllModals(); }));
     let _fitT; window.addEventListener("resize", () => { clearTimeout(_fitT); _fitT = setTimeout(() => { for (const s of sessions.values()) if (s.status !== "exited") fitTile(s); updateKeybar(); positionKeybar(); }, 150); });
 
@@ -2367,9 +2401,6 @@
     initTheme();
     renderAll();
     initWorkspace();
-    // First run: the guided tour is the welcome (it waits out the workspace
-    // overlay). The Help modal stays one click away behind ? and its tour button.
-    maybeFirstRunTour();
   </script>
 </body>
 </html>
