@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <!-- viewport-fit=cover clears the notch; interactive-widget=resizes-content reflows for the soft keyboard. -->
@@ -19,8 +19,8 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Menagerie" />
-  <!-- Apply the saved theme before first paint so dark users don't flash light. -->
-  <script>try{if(localStorage.getItem('menagerie-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch{}</script>
+  <!-- Apply an explicit saved choice before first paint; new visitors start dark. -->
+  <script>try{if(localStorage.getItem('menagerie-theme')==='light')document.documentElement.removeAttribute('data-theme');}catch{}</script>
   <!-- xterm.js 5.5.0 (cdnjs, unminified — cdnjs has no min.js for this version). UMD global: Terminal. -->
   <script defer
           src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.5.0/xterm.js"
@@ -33,7 +33,7 @@
     .xterm{padding:6px 8px}
 
     :root {
-      /* Light theme — Rangrez "MUJI" (Japan · the cleanest white in the library). Default. */
+      /* Light theme — Rangrez "MUJI" (Japan · the cleanest white in the library). */
       color-scheme: light;
       --bg: #f9f9f8; --panel: #ffffff; --panel-2: #f1f1ee; --elev: #ebebe6;
       --border: #e2e1db; --text: #1c1815; --muted: #6b6962; --faint: #9b988f;
@@ -1962,7 +1962,7 @@
     function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")) || $("wsOverlay").classList.contains("open"); }
     function showSpawnResult(text, ok) { const el = $("spawnResult"); el.textContent = text; el.className = ok ? "inline-ok" : "inline-error"; }
 
-    // ===== theme (light default / dark — rangrez palettes) ============
+    // ===== theme (dark default / light — rangrez palettes) ============
     const THEME_KEY = "menagerie-theme";
     function currentTheme() { return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light"; }
     function applyTheme(mode) {
@@ -1973,7 +1973,7 @@
       for (const s of sessions.values()) if (s.term) { try { s.term.options.theme = t; } catch {} }
     }
     function toggleTheme() { const next = currentTheme() === "dark" ? "light" : "dark"; try { localStorage.setItem(THEME_KEY, next); } catch {} applyTheme(next); }
-    function initTheme() { let m = "light"; try { m = localStorage.getItem(THEME_KEY) || "light"; } catch {} applyTheme(m); }
+    function initTheme() { let m = "dark"; try { m = localStorage.getItem(THEME_KEY) || "dark"; } catch {} applyTheme(m); }
 
     // ===== first-run tour (onboarding walkthrough) ====================
     // A spotlight over a real control + a coach card. Runs once on first visit,
