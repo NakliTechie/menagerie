@@ -10,8 +10,14 @@ command line that launches it, and how to read its output for activity signals
 > find yourself special-casing an agent in `index.html`, stop:
 > the difference belongs in a shim.
 
-Shims live in [`../relay-go/internal/shims/`](../relay-go/internal/shims/). v1.0
-ships three: `mini`, `claude-code`, and `custom`.
+Shims live in [`../relay-go/internal/shims/`](../relay-go/internal/shims/). Two
+ship: `Generic` — which every configured agent uses — and `custom`.
+
+> **Read this first:** adding an agent usually needs **no shim at all.** An agent
+> is a row in the relay's known-agent registry (`internal/config/agents.go`) or a
+> table in `relay.toml`; the relay detects it on `PATH` and runs it through
+> `Generic`. Write a shim only for an agent whose spawn mechanics genuinely
+> differ. See [Adding an agent](#adding-an-agent-usually-not-a-shim) below.
 
 ## The `Shim` interface
 
@@ -38,40 +44,34 @@ type Shim interface {
 launches it and wires up the byte stream. Your job is only to assemble the
 command.
 
-## Worked example: `mini`
+## Worked example: `Generic`
 
-[`mini.go`](../relay-go/internal/shims/mini.go) — the whole file:
+[`generic.go`](../relay-go/internal/shims/generic.go) — the shim behind every
+configured agent:
 
 ```go
-package shims
-
-import "os/exec"
-
-// Mini runs mini-swe-agent.
-type Mini struct {
-    // Cmd overrides the executable; empty uses "mini" from PATH.
-    Cmd string
+// Generic runs a configured coding-agent CLI: exec the command, hand it the
+// spawn's args, attach a PTY.
+type Generic struct {
+    ID  string // the agent id the browser shows
+    Cmd string // executable (PATH lookup); empty falls back to ID
 }
 
-func (Mini) Name() string { return "mini" }
+func (g Generic) Name() string { return g.ID }
 
-func (m Mini) Spawn(cwd string, args []string, env map[string]string) (*exec.Cmd, error) {
-    bin := m.Cmd
+func (g Generic) Spawn(cwd string, args []string, env map[string]string) (*exec.Cmd, error) {
+    bin := g.Cmd
     if bin == "" {
-        bin = "mini"
+        bin = g.ID
     }
     return build(bin, args, cwd, env), nil
 }
-
-func (Mini) DetectIdle(buf []byte) bool       { return false }
-func (Mini) DetectNeedsInput(buf []byte) bool { return endsWithPrompt(buf) }
 ```
 
-The struct carries a `Cmd` override (set from `relay.toml`'s `command =`), falls
-back to `mini` on `PATH`, and hands the task `args` straight through. Idle
-detection is left off (`false`); needs-input reuses the shared `endsWithPrompt`
-helper. `claude-code` ([`claude_code.go`](../relay-go/internal/shims/claude_code.go))
-is structurally identical, defaulting to the `claude` binary.
+`Cmd` comes from the resolved agent list — the registry entry, or `relay.toml`'s
+`command =` when you pinned one. The task `args` pass straight through. That is
+the whole of what `claude-code`, `codex`, `opencode` and the rest need, which is
+why they are configuration rather than code.
 
 ## Worked example: `custom`
 
@@ -140,47 +140,62 @@ for _, suffix := range []string{">", "?", ":", "$", "#", "❯"} {
 }
 ```
 
-## Registering a shim
+## Adding an agent (usually not a shim)
 
-A shim only exists to the relay once it's in the registry. From `NewRegistry` in
-[`shims.go`](../relay-go/internal/shims/shims.go):
+The relay decides which agents exist from data, not code:
+
+1. **The registry** — `KnownAgents` in
+   [`internal/config/agents.go`](../relay-go/internal/config/agents.go) maps an
+   agent id to the executable to probe. At startup `ResolveAgents` runs
+   `exec.LookPath` over each one and advertises only what this machine actually
+   has, so the browser's dropdown never offers a spawn that would fail.
+2. **`relay.toml`** — any `[agents.<id>]` table is always offered, detected or
+   not, and its `command` overrides the registry. That is how a user points an id
+   at a wrapper script or an off-PATH binary.
+
+So adding an agent is one registry row:
 
 ```go
-// NewRegistry returns the shims implemented in this build, keyed by agent id.
-// `commands` maps an agent id to its configured executable (empty => shim default).
+"opencode": {Command: "opencode"},
+```
+
+Set `Transports: []string{"acp"}` only if you have verified the agent speaks the
+Agent Client Protocol over stdio — claiming it wrongly yields a broken session.
+
+Then `go build ./cmd/menagerie-relay && go test ./...`, restart `serve`, and —
+if the binary is on your `PATH` — reconnect in the app to find the agent in the
+**+ Spawn** dropdown (alphabetically; no agent is featured). `menagerie-relay
+agents` prints what was detected and what was not. The browser needs no change:
+it learns agent ids from the relay's `hello.agents` list.
+
+The registry ships inside the binary and is refreshed at release time. It is
+never fetched at runtime — the relay would then be taking the names of programs
+it executes from the network, and a periodic check would be a phone-home.
+
+## Registering a real shim
+
+`NewRegistry` in [`shims.go`](../relay-go/internal/shims/shims.go) builds itself
+from the resolved agent list:
+
+```go
 func NewRegistry(commands map[string]string) map[string]Shim {
-    return map[string]Shim{
-        "mini":        Mini{Cmd: commands["mini"]},
-        "claude-code": ClaudeCode{Cmd: commands["claude-code"]},
-        "custom":      Custom{},
+    reg := make(map[string]Shim, len(commands)+1)
+    for id, cmd := range commands {
+        if id == "custom" {
+            continue
+        }
+        reg[id] = Generic{ID: id, Cmd: cmd}
     }
+    reg["custom"] = Custom{}
+    return reg
 }
 ```
 
-The `commands` map comes from `relay.toml`'s `[agents.<id>]` tables, so a shim
-that honors a configurable binary should pull its override from
-`commands["<id>"]`.
-
-## Adding a new shim — step by step
-
-1. **Create the file**, e.g. `internal/shims/opencode.go`, with a struct
-   implementing `Shim`. Lean on `build` and `mergeEnv`; reuse `endsWithPrompt`
-   if its prompt set fits, or write a tighter heuristic for your agent.
-2. **Register it** in `NewRegistry` with the agent id as the key:
-   ```go
-   "opencode": OpenCode{Cmd: commands["opencode"]},
-   ```
-3. **Add it to `relay.toml`** so the relay advertises it:
-   ```toml
-   [agents.opencode]
-   command = "opencode"
-   ```
-4. **Build and test:** `go build ./cmd/menagerie-relay && go test ./...`.
-   Restart `serve`; reconnect in the app and the new agent appears in the
-   **+ Spawn** dropdown (alphabetically — no agent is featured).
-
-That's the whole loop. The browser needs no change: it learns the new agent id
-from the relay's `hello.agents` list.
+An agent that needs different mechanics gets a struct of its own in
+`internal/shims/` implementing `Shim`, plus a case in this loop keyed by its id
+(`if id == "myagent" { reg[id] = MyAgent{Cmd: cmd}; continue }`). Reach for that
+only when `Generic` cannot express the spawn — a different executable name is
+not a reason; that is what `Command` is for.
 
 ## Heuristic guidance
 
