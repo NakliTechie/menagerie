@@ -234,6 +234,13 @@ export interface SeenMessage extends BaseMessage {
  * A wait whose condition is ALREADY true resolves immediately (spec §8.1.1 E1).
  * Only states the caller names satisfy it — `unknown` included (E3).
  */
+/** The wait half of an atomic prompt+wait (spec §8.2). */
+export interface WaitSpec {
+  until: SessionStatus[];
+  timeout_ms?: number;
+  wait_id?: string;
+}
+
 export interface WaitMessage extends BaseMessage {
   type: "wait";
   session_id: string;
@@ -342,6 +349,14 @@ export interface PromptMessage extends BaseMessage {
   session_id: string;
   session_token: string;
   text: string; // relay maps to ACP content blocks
+  /**
+   * Arm a wait in the SAME frame (spec §8.2), so the transition this prompt
+   * causes cannot land in the gap between a separate prompt and wait. The relay
+   * arms it before dispatching. A prompt to a session already waiting on a human
+   * decision is refused with `session_blocked` and nothing is sent — an approval
+   * dialog would read the prompt as its answer (E6).
+   */
+  wait?: WaitSpec;
 }
 
 // ===========================================================================

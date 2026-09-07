@@ -206,6 +206,8 @@ const S = {
     session_id: [isStr, true],
     session_token: [isStr, true],
     text: [isStr, true],
+    // §8.2 atomic prompt+wait: same rules as a standalone wait's `until`.
+    wait: [(v) => obj(v) && strArr(v.until) && v.until.length > 0 && v.until.every((x) => STATUSES.includes(x)), false],
   }),
 };
 

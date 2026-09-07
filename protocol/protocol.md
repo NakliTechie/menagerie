@@ -37,6 +37,11 @@
 > there is no unbounded server-side wait. `waited.brokered` is set by a client
 > that composed a wait across relays on the relay's behalf, so a supervisor can
 > tell a brokered wait (lives as long as its broker) from a relay-owned one.
+> **`prompt.wait`** (§8.2) arms a wait in the same frame, closing the gap between
+> a separate prompt and wait. A prompt to a session already waiting on a human
+> decision is refused with `session_blocked` and **nothing is sent**: the pending
+> approval dialog would read the prompt as its answer, approving or rejecting a
+> tool call the sender never saw.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 
