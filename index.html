@@ -93,6 +93,23 @@
     .sb-tri-spacer { flex: 0 0 auto; width: 12px; }
     .sb-count { flex: 0 0 auto; font-size: 10px; color: var(--faint); background: var(--panel-2); border-radius: 8px; padding: 0 5px; }
     .sb-orphan { flex: 0 0 auto; font-size: 10px; color: var(--yellow); }
+    /* Agent combobox: type to filter, recently-used first. A native <select>
+       only prefix-jumps, which stops helping once a relay reports a dozen agents. */
+    .combo { position: relative; }
+    .combo input { width: 100%; }
+    .combo ul { display: none; position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; max-height: 216px; overflow-y: auto;
+      margin: 0; padding: 4px; list-style: none; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+    .combo.open ul { display: block; }
+    .combo li { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
+    /* Active row: a left accent band, the same idiom the tree view uses for a
+       child. An outlined box here reads as a second text input. */
+    .combo li { border-left: 2px solid transparent; }
+    .combo li[aria-selected="true"] { background: var(--panel-2); }
+    .combo li.active { background: var(--elev); border-left-color: var(--accent); }
+    .combo li .tag { margin-left: auto; font-size: 10px; color: var(--faint); border: 1px solid var(--border); border-radius: 8px; padding: 1px 6px; }
+    .combo li.empty { color: var(--muted); cursor: default; }
+    .combo li.empty:hover { background: none; }
+    .combo-hint { font-size: 11.5px; color: var(--faint); margin-top: 4px; min-height: 14px; }
     .spawn-parent-chip { margin-bottom: 12px; padding: 7px 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 12.5px; color: var(--text); }
     .spawn-parent-chip strong { color: var(--accent); }
     .stk-opt { display: flex; align-items: flex-start; gap: 8px; padding: 8px 2px; font-size: 13px; cursor: pointer; }
@@ -509,7 +526,13 @@
       <div class="body">
         <div id="spawnParentChip" class="spawn-parent-chip" style="display:none"></div>
         <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select></div>
-        <div class="field"><label for="spawnAgent">Agent</label><select id="spawnAgent"></select></div>
+        <div class="field"><label for="spawnAgentInput">Agent</label>
+          <div class="combo" id="spawnAgentCombo">
+            <input id="spawnAgentInput" role="combobox" aria-expanded="false" aria-controls="spawnAgentList" aria-autocomplete="list"
+                   aria-describedby="spawnAgentHint" placeholder="type to filter" autocomplete="off" spellcheck="false" />
+            <ul id="spawnAgentList" role="listbox" aria-label="Agents on this relay"></ul>
+          </div>
+          <div id="spawnAgentHint" class="combo-hint"></div></div>
         <div class="field" id="customCmdField" style="display:none"><label for="spawnCustomCmd">Custom command</label>
           <input id="spawnCustomCmd" placeholder="e.g. bash" autocomplete="off" spellcheck="false" /></div>
         <div class="field"><label for="spawnCwd">Working directory</label>
@@ -1415,6 +1438,7 @@
     function spawn(relayId, agent, cwd, task, customCmd, transport) {
       const relay = relays.find((r) => r.id === relayId);
       if (!relay || relay.status !== "connected") { showSpawnResult("relay not connected", false); return; }
+      if (!agent) { showSpawnResult("pick an agent", false); return; }
       const client_id = crypto.randomUUID(); pendingCwd.set(client_id, cwd);
       const tr = transport || (supportsACP(relay, agent) ? "acp" : "pty");
       pendingTransport.set(client_id, tr);
@@ -1424,6 +1448,7 @@
       const parentId = resolveSpawnParent(relayId); // v1.2: only if a live session on THIS relay
       spawnChildParentId = null;
       send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr, parent_session_id: parentId });
+      noteAgentUsed(agent); // recency drives the combobox order next time
       showSpawnResult(tr === "acp" ? "spawning structured session…" : "spawning…", true);
     }
 
@@ -1959,19 +1984,106 @@
       if (onSelectedRelay) { chip.style.display = ""; chip.innerHTML = `child of: <strong>${escapeHtml(parent.agent)}</strong>`; }
       else { chip.style.display = "none"; if (!parent) spawnChildParentId = null; }
     }
-    function renderAgentOptions() {
-      const agentSel = $("spawnAgent"); agentSel.innerHTML = "";
-      const r = relays.find((x) => x.id === $("spawnRelay").value);
-      const agents = (r && r.hello && r.hello.agents) ? r.hello.agents : [];
-      for (const a of agents) {
-        const o = document.createElement("option"); o.value = a;
-        o.textContent = a + (supportsACP(r, a) ? "  · acp" : "");
-        agentSel.appendChild(o);
-      }
-      $("customCmdField").style.display = agentSel.value === "custom" ? "" : "none";
-      $("spawnAcpRow").style.display = r && supportsACP(r, agentSel.value) ? "" : "none";
-      if (r) $("spawnAcp").checked = supportsACP(r, agentSel.value); // default to the richer transport when offered
+    // ===== agent combobox ===========================================
+    // The relay advertises every agent it detected on PATH, which on a well-
+    // equipped machine is a dozen or more. So: type to filter, and order by
+    // what this browser last spawned (most recent first) before alphabetical.
+    const RECENT_AGENTS_KEY = "menagerie-recent-agents";
+    const RECENT_AGENTS_MAX = 8;
+    let agentChoices = [];        // ids offered by the selected relay
+    let selectedAgent = "";       // the committed choice — the spawn reads this
+    let agentActive = -1;         // index into the filtered list, for the keyboard
+
+    function recentAgents() { try { const v = JSON.parse(localStorage.getItem(RECENT_AGENTS_KEY) || "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; } }
+    function noteAgentUsed(id) {
+      if (!id) return;
+      const next = [id, ...recentAgents().filter((x) => x !== id)].slice(0, RECENT_AGENTS_MAX);
+      try { localStorage.setItem(RECENT_AGENTS_KEY, JSON.stringify(next)); } catch {}
     }
+    // Recently-used first (in use order), then everything else alphabetically.
+    function orderAgents(ids) {
+      const recent = recentAgents();
+      const used = recent.filter((r) => ids.includes(r));
+      const rest = ids.filter((i) => !used.includes(i)).sort();
+      return { ordered: [...used, ...rest], recentCount: used.length };
+    }
+    function filteredAgents() {
+      const q = $("spawnAgentInput").value.trim().toLowerCase();
+      const { ordered, recentCount } = orderAgents(agentChoices);
+      if (!q) return { list: ordered, recentCount };
+      // Substring, not prefix: "code" should find claude-code and opencode.
+      return { list: ordered.filter((a) => a.toLowerCase().includes(q)), recentCount: 0 };
+    }
+    function setSpawnAgent(id, opts) {
+      selectedAgent = id || "";
+      const inp = $("spawnAgentInput");
+      if (!opts || !opts.keepText) inp.value = selectedAgent;
+      const r = relays.find((x) => x.id === $("spawnRelay").value);
+      $("customCmdField").style.display = selectedAgent === "custom" ? "" : "none";
+      $("spawnAcpRow").style.display = r && supportsACP(r, selectedAgent) ? "" : "none";
+      if (r) $("spawnAcp").checked = supportsACP(r, selectedAgent); // default to the richer transport when offered
+      renderAgentList();
+    }
+    function renderAgentList() {
+      const ul = $("spawnAgentList"); ul.innerHTML = "";
+      const r = relays.find((x) => x.id === $("spawnRelay").value);
+      const { list, recentCount } = filteredAgents();
+      if (agentActive >= list.length) agentActive = list.length - 1;
+      if (!list.length) {
+        const li = document.createElement("li"); li.className = "empty"; li.textContent = agentChoices.length ? "No agent matches." : "This relay offers no agents.";
+        ul.appendChild(li);
+      }
+      list.forEach((a, i) => {
+        const li = document.createElement("li");
+        li.id = "spawnAgentOpt-" + i; li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", a === selectedAgent ? "true" : "false");
+        if (i === agentActive) li.classList.add("active");
+        const name = document.createElement("span"); name.textContent = a; li.appendChild(name);
+        const tags = [];
+        if (i < recentCount) tags.push("recent");
+        if (supportsACP(r, a)) tags.push("acp");
+        for (const t of tags) { const s2 = document.createElement("span"); s2.className = "tag"; s2.textContent = t; li.appendChild(s2); }
+        li.addEventListener("mousedown", (e) => { e.preventDefault(); commitAgent(a); });
+        ul.appendChild(li);
+      });
+      const inp = $("spawnAgentInput");
+      inp.setAttribute("aria-activedescendant", agentActive >= 0 && list.length ? "spawnAgentOpt-" + agentActive : "");
+      $("spawnAgentHint").textContent = agentChoices.length > 1 ? agentChoices.length + " agents on this relay" : "";
+    }
+    function openAgentList(open) {
+      $("spawnAgentCombo").classList.toggle("open", !!open);
+      $("spawnAgentInput").setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) renderAgentList(); else { agentActive = -1; $("spawnAgentInput").setAttribute("aria-activedescendant", ""); }
+    }
+    function agentListOpen() { return $("spawnAgentCombo").classList.contains("open"); }
+    function moveAgentActive(dir) {
+      const { list } = filteredAgents();
+      if (!agentListOpen()) openAgentList(true);
+      if (!list.length) return;
+      agentActive = (agentActive + dir + list.length) % list.length;
+      renderAgentList();
+      const el = $("spawnAgentOpt-" + agentActive); if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+    }
+    function commitAgent(a) { setSpawnAgent(a); openAgentList(false); $("spawnAgentInput").focus(); }
+    // Typed text that isn't a real agent must never reach spawn: fall back to the
+    // committed choice when the box is left with an unrecognised value.
+    function reconcileAgentInput() {
+      const typed = $("spawnAgentInput").value.trim();
+      if (agentChoices.includes(typed)) { setSpawnAgent(typed); return; }
+      const { list } = filteredAgents();
+      if (typed && list.length === 1) { setSpawnAgent(list[0]); return; }
+      setSpawnAgent(agentChoices.includes(selectedAgent) ? selectedAgent : (agentChoices[0] || ""));
+    }
+    function renderAgentOptions() {
+      const r = relays.find((x) => x.id === $("spawnRelay").value);
+      agentChoices = (r && r.hello && r.hello.agents) ? r.hello.agents.slice() : [];
+      const { ordered } = orderAgents(agentChoices);
+      const keep = agentChoices.includes(selectedAgent) ? selectedAgent : (ordered[0] || "");
+      agentActive = -1;
+      setSpawnAgent(keep);
+      openAgentList(false);
+    }
+
     // Note: the spawn dialog is populated on open (openModal) + on relay-select change,
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
     function renderAll() { renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid(); }
@@ -2219,7 +2331,16 @@
     }, true);
     if (window.visualViewport) { window.visualViewport.addEventListener("resize", positionKeybar); window.visualViewport.addEventListener("scroll", positionKeybar); }
     $("spawnRelay").addEventListener("change", renderAgentOptions);
-    $("spawnAgent").addEventListener("change", () => { $("customCmdField").style.display = $("spawnAgent").value === "custom" ? "" : "none"; });
+    $("spawnAgentInput").addEventListener("input", () => { agentActive = 0; openAgentList(true); renderAgentList(); });
+    $("spawnAgentInput").addEventListener("focus", () => { $("spawnAgentInput").select(); agentActive = -1; openAgentList(true); });
+    $("spawnAgentInput").addEventListener("blur", () => { openAgentList(false); reconcileAgentInput(); });
+    $("spawnAgentInput").addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); moveAgentActive(e.key === "ArrowDown" ? 1 : -1); return; }
+      if (!agentListOpen()) return;
+      const { list } = filteredAgents();
+      if (e.key === "Enter" && agentActive >= 0 && list[agentActive]) { e.preventDefault(); commitAgent(list[agentActive]); }
+      else if (e.key === "Escape") { e.stopPropagation(); openAgentList(false); reconcileAgentInput(); } // close the list, not the modal
+    });
     $("spawnRelay").addEventListener("change", renderSpawnParentChip);
     $("addRelayBtn").addEventListener("click", () => {
       const url = $("relayUrl").value.trim(), token = $("relayToken").value.trim(), err = $("addRelayError"); err.textContent = "";
@@ -2227,7 +2348,7 @@
       if (!token) { err.textContent = "Registration token is required."; return; }
       addRelay(url, token); $("relayUrl").value = ""; $("relayToken").value = "";
     });
-    $("doSpawnBtn").addEventListener("click", () => spawn($("spawnRelay").value, $("spawnAgent").value, $("spawnCwd").value.trim(), $("spawnTask").value.trim(), $("spawnCustomCmd").value.trim(), $("spawnAcpRow").style.display !== "none" && !$("spawnAcp").checked ? "pty" : undefined));
+    $("doSpawnBtn").addEventListener("click", () => spawn($("spawnRelay").value, selectedAgent, $("spawnCwd").value.trim(), $("spawnTask").value.trim(), $("spawnCustomCmd").value.trim(), $("spawnAcpRow").style.display !== "none" && !$("spawnAcp").checked ? "pty" : undefined));
     $("changeFolderBtn").addEventListener("click", () => pickWorkspace());
     $("wsPickBtn").addEventListener("click", async () => {
       const ov = $("wsOverlay");
@@ -2380,6 +2501,19 @@
                 for (let i = 0; i < (nChildren || 4); i++) mk("worker", parent, statuses[i % statuses.length]);
                 renderAll();
                 return parent;
+              },
+              // Install a fake connected relay advertising `agents` — for exercising
+              // the spawn dialog's agent combobox without a real relay.
+              fakeRelayAgents(agents) {
+                const sent = window.__menagerie.test._sent;
+                const existing = relays.find((r) => r.id === "fake");
+                const hello = { hosts_children: true, agents: agents || [], host_os: "darwin", host_arch: "arm64", transports: ["pty", "acp"],
+                  agent_transports: { omp: ["acp"] } };
+                if (existing) existing.hello = hello;
+                else relays.push({ id: "fake", name: "localhost", url: "ws://fake", status: "connected", hello,
+                  ws: { readyState: 1, send: (str) => { try { sent.push(JSON.parse(str)); } catch (e) { void e; } } } });
+                renderAll();
+                return "ok";
               },
               // C5 assertion helper: replay a persisted acp-jsonl log through the live render path
               // and return the resulting stream serialization (compare against the live capture).
