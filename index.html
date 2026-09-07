@@ -2004,7 +2004,7 @@
     function orderAgents(ids) {
       const recent = recentAgents();
       const used = recent.filter((r) => ids.includes(r));
-      const rest = ids.filter((i) => !used.includes(i)).sort();
+      const rest = ids.filter((i) => !used.includes(i)).toSorted();
       return { ordered: [...used, ...rest], recentCount: used.length };
     }
     function filteredAgents() {
