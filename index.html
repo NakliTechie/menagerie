@@ -110,6 +110,10 @@
     .combo li.empty { color: var(--muted); cursor: default; }
     .combo li.empty:hover { background: none; }
     .combo-hint { font-size: 11.5px; color: var(--faint); margin-top: 4px; min-height: 14px; }
+    #toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 200; max-width: min(520px, calc(100vw - 32px));
+      padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--panel); color: var(--text);
+      font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+    #toast.err { border-color: var(--accent); }
     .spawn-parent-chip { margin-bottom: 12px; padding: 7px 11px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 12.5px; color: var(--text); }
     .spawn-parent-chip strong { color: var(--accent); }
     .stk-opt { display: flex; align-items: flex-start; gap: 8px; padding: 8px 2px; font-size: 13px; cursor: pointer; }
@@ -519,6 +523,10 @@
     </div>
   </div>
 
+  <!-- Toast: the in-app surface for messages with no open modal to land in
+       (the no-native-dialogs rule means never alert()). -->
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+
   <!-- Spawn -->
   <div class="scrim" id="spawnScrim" data-close>
     <div class="modal" role="dialog" aria-label="Spawn agent">
@@ -760,8 +768,11 @@
       }
     }
     // Build a fresh session record from a spawned/listed descriptor.
-    function makeSession(relay, id, agent, transport, startedAt, cwd, parentId) {
+    function makeSession(relay, id, agent, transport, startedAt, cwd, parentId, agentSessionId) {
       return { id, relayId: relay.id, relayName: relay.name, agent, token: null, transport, parentId: parentId || null,
+        // The agent's OWN session reference. Persisted, and handed back as
+        // spawn.resume_agent_session to reopen this conversation later.
+        agentSessionId: agentSessionId || null,
         status: "running", startedAt, cwd: cwd || "", cols: 0, rows: 0, term: null, pending: [], flushing: false };
     }
     function mountTile(sess) {
@@ -782,7 +793,7 @@
       registered(relay) { relay.status = "connected"; relay.error = null; relay.retries = 0; },
       spawned(relay, msg) {
         closeModal("spawnScrim");
-        const sess = makeSession(relay, msg.session_id, msg.agent, pendingTransport.get(msg.client_id) || "pty", Date.now(), pendingCwd.get(msg.client_id) || "", msg.parent_session_id);
+        const sess = makeSession(relay, msg.session_id, msg.agent, pendingTransport.get(msg.client_id) || "pty", Date.now(), pendingCwd.get(msg.client_id) || "", msg.parent_session_id, msg.agent_session_id);
         sess.token = msg.session_token;
         pendingCwd.delete(msg.client_id); pendingTransport.delete(msg.client_id);
         initAcpState(sess); sessions.set(sess.id, sess); mountTile(sess); writeSessionMeta(sess);
@@ -845,7 +856,7 @@
       // capability for an older relay that omits it. Guessing wrong rebuilt a PTY
       // session as an ACP tile whose output frames were dropped → a hung tile.
       const transport = info.transport || (supportsACP(relay, info.agent) ? "acp" : "pty");
-      const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "", info.parent_session_id);
+      const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "", info.parent_session_id, info.agent_session_id);
       initAcpState(sess); sessions.set(sess.id, sess);
       if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
       send(relay, { type: "attach", session_id: info.session_id });
@@ -879,7 +890,7 @@
       // entries would leak (the error frame carries no client_id to key off). Spawns
       // are modal — one at a time — so any pending entries here are stale; clear them.
       pendingCwd.clear(); pendingTransport.clear();
-      showSpawnResult((msg.code || "error") + ": " + (msg.message || ""), false);
+      notify((msg.code || "error") + ": " + (msg.message || ""), false);
     }
     function handleMessage(relay, msg) {
       const h = MSG_HANDLERS[msg.type];
@@ -1379,6 +1390,9 @@
         ended_at: sess.endedAt ? new Date(sess.endedAt).toISOString() : null,
         exit_code: (sess.exitCode === undefined ? null : sess.exitCode),
         capture: (sess.transport === "acp" ? "acp-jsonl" : "pty-bytes"),
+        transport: sess.transport || "pty",
+        relay_id: sess.relayId || null,
+        agent_session_id: sess.agentSessionId || null, // what a later resume hands back
       }); notePersistResult(true); } catch (e) { console.warn("write meta failed", e); notePersistResult(false); }
     }
     async function flushSession(sess) {
@@ -1400,6 +1414,55 @@
       metas.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
       return metas;
     }
+    // A past session can be resumed when its relay is connected and still
+    // advertises that agent as resumable, and we kept the agent's own session
+    // reference. Anything short of that offers Replay only — never a fresh
+    // session dressed up as a resumed one.
+    function resumeTargetFor(m) {
+      if (!m || !m.agent_session_id) return null;
+      // The id is authoritative when we have one; the name is only a fallback for
+      // metas written before relay_id was recorded. Mixing them in one predicate
+      // let a different relay that happens to share the name win the match.
+      const relay = m.relay_id ? relays.find((r) => r.id === m.relay_id)
+                               : relays.find((r) => r.name === m.relay_name);
+      if (!relay || relay.status !== "connected") return null;
+      if (m.transport === "acp") return supportsACP(relay, m.agent) ? relay : null;
+      const list = (relay.hello && relay.hello.resume_agents) || [];
+      return list.includes(m.agent) ? relay : null;
+    }
+    function resumePastSession(m, relay) {
+      const client_id = crypto.randomUUID();
+      const cwd = m.cwd || "";
+      pendingCwd.set(client_id, cwd);
+      const tr = m.transport === "acp" ? "acp" : "pty";
+      pendingTransport.set(client_id, tr);
+      send(relay, { type: "spawn", agent: m.agent, cwd, args: [], env: {}, client_id,
+        transport: tr, resume_agent_session: m.agent_session_id });
+      noteAgentUsed(m.agent);
+      toast("resuming " + m.agent + "…", true);
+    }
+    function pastSessionRow(m) {
+      const row = document.createElement("div"); row.className = "list-row";
+      const dot = document.createElement("span"); dot.className = "dot-status s-exited";
+      const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
+      meta.querySelector(".n").textContent = `${m.agent} · ${m.relay_name || ""}`;
+      meta.querySelector(".u").textContent = new Date(m.started_at).toLocaleString() + (m.exit_code != null ? ` · exit ${m.exit_code}` : "");
+      row.append(dot, meta);
+      // Resume reopens the agent's OWN conversation, and only on a live relay
+      // that says it can. Replay is the always-available fallback: it re-renders
+      // the transcript we captured, and needs no relay at all.
+      const target = resumeTargetFor(m);
+      if (target) {
+        const rb = document.createElement("button"); rb.className = "link"; rb.textContent = "Resume";
+        rb.title = `Reopen this conversation in ${m.agent} on ${target.name}`;
+        rb.addEventListener("click", () => { closeAllModals(); resumePastSession(m, target); });
+        row.appendChild(rb);
+      }
+      const btn = document.createElement("button"); btn.className = "link"; btn.textContent = "Replay";
+      btn.addEventListener("click", () => { closeAllModals(); openReplay(m); });
+      row.appendChild(btn);
+      return row;
+    }
     async function refreshPastSessions() {
       const metas = await loadPastMetas();
       const full = $("pastList");
@@ -1407,16 +1470,7 @@
         full.innerHTML = "";
         if (!FS.ok()) full.innerHTML = `<div class="hint">Pick a workspace folder to keep session history.</div>`;
         else if (metas.length === 0) full.innerHTML = `<div class="hint">No past sessions yet.</div>`;
-        else for (const m of metas) {
-          const row = document.createElement("div"); row.className = "list-row";
-          const dot = document.createElement("span"); dot.className = "dot-status s-exited";
-          const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = `<div class="n"></div><div class="u"></div>`;
-          meta.querySelector(".n").textContent = `${m.agent} · ${m.relay_name || ""}`;
-          meta.querySelector(".u").textContent = new Date(m.started_at).toLocaleString() + (m.exit_code != null ? ` · exit ${m.exit_code}` : "");
-          const btn = document.createElement("button"); btn.className = "link"; btn.textContent = "Replay";
-          btn.addEventListener("click", () => { closeAllModals(); openReplay(m); });
-          row.append(dot, meta, btn); full.appendChild(row);
-        }
+        else for (const m of metas) full.appendChild(pastSessionRow(m));
       }
       const sb = $("sbPast");
       if (sb) {
@@ -2108,6 +2162,19 @@
     function closeModal(id) { $(id).classList.remove("open"); }
     function closeAllModals() { document.querySelectorAll(".scrim").forEach((s) => s.classList.remove("open")); }
     function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")) || $("wsOverlay").classList.contains("open"); }
+    // Show a message that has no modal to live in. Never alert()/confirm().
+    let toastTimer = null;
+    function toast(text, ok) {
+      const el = $("toast");
+      el.textContent = text; el.classList.toggle("err", ok === false); el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
+    }
+    // Route to whichever surface the user is actually looking at.
+    function notify(text, ok) {
+      if ($("spawnScrim").classList.contains("open")) showSpawnResult(text, ok);
+      else toast(text, ok);
+    }
     function showSpawnResult(text, ok) { const el = $("spawnResult"); el.textContent = text; el.className = ok ? "inline-ok" : "inline-error"; }
 
     // ===== theme (dark default / light — rangrez palettes) ============
@@ -2515,6 +2582,12 @@
                 renderAll();
                 return "ok";
               },
+              // Reach the fake relay's hello (to vary advertised capabilities).
+              _relayHello() { const r = relays.find((x) => x.id === "fake"); return r && r.hello; },
+              // Seed a past-session meta file without having run a session.
+              async writeMeta(meta) { await FS.writeJSON([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".meta.json"], meta); return "ok"; },
+              // Feed a frame through the live message path as if the fake relay sent it.
+              deliver(frame) { const r = relays.find((x) => x.id === "fake"); if (r) handleMessage(r, frame); return "ok"; },
               // C5 assertion helper: replay a persisted acp-jsonl log through the live render path
               // and return the resulting stream serialization (compare against the live capture).
               async replaySerialize(metaId) {
