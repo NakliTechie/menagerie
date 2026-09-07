@@ -112,6 +112,7 @@ const S = {
     pid: [isNum, true],
     started_at: [isStr, true],
     parent_session_id: [isStr, false], // protocol 1.3
+    agent_session_id: [isStr, false], // the agent's own session reference
   }),
   output: shape({
     type: [(v) => v === "output", true],

@@ -17,8 +17,11 @@
 > `resume <id>`, `--session <id>`, `--resume=<id>`, `--conversation <id>`,
 > `--thread <id>` — the agents disagree) and **refuses with
 > `resume_unsupported` rather than starting a fresh session**, so a resume never
-> silently loses the conversation. PTY only: a structured session reopens
-> through ACP's own `session/load`.
+> silently loses the conversation. A structured (ACP) session reopens through
+> ACP's own `session/load` instead, gated on the agent advertising the
+> `loadSession` capability; `spawned`/`SessionInfo` carry `agent_session_id`,
+> the agent's own reference — persist it, because handing it back is what
+> reopens the conversation.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 

@@ -111,6 +111,10 @@ export interface SpawnedMessage extends BaseMessage {
   pid: number;
   started_at: string; // ISO-8601 UTC
   parent_session_id?: string; // protocol 1.3; set when spawned as a child (supervisor tree)
+  /** The agent's OWN session reference, when it issued one (structured sessions
+   *  do, at session/new). Persist it: handing it back as
+   *  `spawn.resume_agent_session` is what reopens this conversation later. */
+  agent_session_id?: string;
 }
 
 /**
@@ -152,6 +156,7 @@ export interface SessionInfo {
   pid: number;
   transport?: Transport; // protocol 1.2; absent ⇒ pty (so re-attach doesn't guess from agent capability)
   parent_session_id?: string; // protocol 1.3; present for a child session, so re-attach rebuilds the tree
+  agent_session_id?: string; // the agent's own session reference, if it issued one
 }
 
 /** Live session list, sent right after `registered`, so a reconnecting client can re-attach (protocol 1.1). */
