@@ -85,6 +85,11 @@ export interface HelloMessage extends BaseMessage {
    * Absent (pre-1.2 relays) ⇒ every listed `agents` entry spawns as `"pty"`.
    */
   agent_transports?: Record<string, Transport[]>;
+  /**
+   * Agent ids this relay can restart into one of their own past conversations
+   * (see `spawn.resume_agent_session`). Absent ⇒ the relay resumes nothing.
+   */
+  resume_agents?: string[];
 }
 
 /**
@@ -188,6 +193,14 @@ export interface SpawnMessage extends BaseMessage {
   /** protocol 1.3: spawn this as a child of a live session (supervisor tree). An
    *  unknown/dead parent is ignored — the session spawns at root, never fails. */
   parent_session_id?: string;
+  /**
+   * Ask the agent to reopen one of ITS OWN past conversations, identified by a
+   * reference the agent issued. Not to be confused with the `resume` frame,
+   * which re-attaches this browser to a still-live relay session. Only agents
+   * listed in `hello.resume_agents` accept it; anything else is refused rather
+   * than spawned fresh, so a resume never silently loses the conversation.
+   */
+  resume_agent_session?: string;
 }
 
 /** Send input (keystrokes) to a session's PTY. */

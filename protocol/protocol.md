@@ -9,6 +9,16 @@
 > parent; `signal{kill}` accepts `subtree: true` (kill descendants leaf-first);
 > `hello.hosts_children` advertises support. A pre-1.3 client ignores every new
 > field and sees a flat grid. All earlier messages are unchanged.
+> Extended 2026-09-07 (additive, optional): **conversation restore** —
+> `spawn.resume_agent_session` asks the agent to reopen one of *its own* past
+> conversations, and `hello.resume_agents` lists the agents that can. Distinct
+> from the `resume` frame, which re-attaches a client to a live relay session.
+> The relay appends the agent's recorded resume argv (`--resume <id>`,
+> `resume <id>`, `--session <id>`, `--resume=<id>`, `--conversation <id>`,
+> `--thread <id>` — the agents disagree) and **refuses with
+> `resume_unsupported` rather than starting a fresh session**, so a resume never
+> silently loses the conversation. PTY only: a structured session reopens
+> through ACP's own `session/load`.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 

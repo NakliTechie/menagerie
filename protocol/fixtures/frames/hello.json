@@ -5,8 +5,34 @@
   "relay_name": "m4pro-home",
   "host_os": "darwin",
   "host_arch": "arm64",
-  "agents": ["claude-code", "custom", "mini", "omp"],
-  "transports": ["pty", "acp"],
+  "agents": [
+    "claude-code",
+    "custom",
+    "mini",
+    "omp"
+  ],
+  "transports": [
+    "pty",
+    "acp"
+  ],
   "hosts_children": false,
-  "agent_transports": { "omp": ["acp"], "claude-code": ["pty"], "custom": ["pty"], "mini": ["pty"] }
+  "agent_transports": {
+    "omp": [
+      "acp"
+    ],
+    "claude-code": [
+      "pty"
+    ],
+    "custom": [
+      "pty"
+    ],
+    "mini": [
+      "pty"
+    ]
+  },
+  "resume_agents": [
+    "claude-code",
+    "codex",
+    "opencode"
+  ]
 }

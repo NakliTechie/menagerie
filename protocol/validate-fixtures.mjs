@@ -60,6 +60,7 @@ const S = {
     agents: [strArr, true],
     transports: [transportArr, true],
     hosts_children: [isBool, true],
+    resume_agents: [strArr, false], // agents that can reopen their own past conversations
     agent_transports: [
       (v) =>
         obj(v) &&
@@ -100,6 +101,7 @@ const S = {
     client_id: [isStr, true],
     transport: [(v) => TRANSPORTS.includes(v), false],
     parent_session_id: [isStr, false], // protocol 1.3
+    resume_agent_session: [isStr, false], // reopen the agent's own past conversation
   }),
   spawned: shape({
     type: [(v) => v === "spawned", true],

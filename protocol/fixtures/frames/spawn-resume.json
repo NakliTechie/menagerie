@@ -1,0 +1,9 @@
+{
+  "type": "spawn",
+  "agent": "claude-code",
+  "cwd": "/Users/chirag/code/sieve",
+  "args": [],
+  "env": {},
+  "client_id": "9c2f7b10-3ad5-4e62-8f11-c07d5b9e4a23",
+  "resume_agent_session": "8f14e45fceea167a"
+}
