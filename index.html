@@ -734,7 +734,7 @@
       ws.addEventListener("close", () => {
         if (relay.gen !== gen || relay.removed) return; // superseded by a newer socket, or relay removed
         if (relay.status === "error") { renderAll(); return; } // auth failure: don't auto-retry
-        relay.status = "connecting"; markRelaySessionsLost(relay); scheduleReconnect(relay); renderAll();
+        relay.status = "connecting"; markRelaySessionsLost(relay); failWaitsForRelay(relay.id); scheduleReconnect(relay); renderAll();
       });
       ws.addEventListener("error", () => {});
     }
@@ -846,6 +846,7 @@
       },
       error(relay, msg) { handleErrorFrame(relay, msg); },
       resume_failed() {},
+      waited(relay, msg) { settleWait(msg.wait_id, { session_id: msg.session_id, state: msg.state, timed_out: !!msg.timed_out }); },
     };
     function reviveOrAttach(relay, info) {
       const existing = sessions.get(info.session_id);
@@ -2065,6 +2066,73 @@
       if (onSelectedRelay) { chip.style.display = ""; chip.innerHTML = `child of: <strong>${escapeHtml(parent.agent)}</strong>`; }
       else { chip.style.display = "none"; if (!parent) spawnChildParentId = null; }
     }
+
+    // ===== cross-relay wait brokering (spec §8, D-v1.2-3) ==================
+    // A relay can only resolve a wait for a session IT hosts — it must never
+    // pretend to own one it cannot see. So a wait spanning relays is composed
+    // here: one local `wait` per relay, joined into a single result marked
+    // `brokered: true`.
+    //
+    // The honesty that marking buys: a relay-owned wait has the relay's
+    // durability, while a brokered one lives exactly as long as this broker. If
+    // the tab closes, brokered waits die with it. The `brokered` flag is how a
+    // supervisor tells the two apart instead of assuming.
+    //
+    // Today the browser is the broker. An agent-side broker later runs this same
+    // composition against its own relay connections — same logic, no protocol
+    // change, which is why the frames stay relay-local.
+    const pendingWaits = new Map(); // wait_id → {resolve, sessionId, relayId}
+    let waitSeq = 0;
+
+    function settleWait(waitId, result) {
+      const p = pendingWaits.get(waitId);
+      if (!p) return;
+      pendingWaits.delete(waitId);
+      p.resolve(result);
+    }
+
+    // One local wait, addressed to whichever relay hosts the session.
+    function relayWait(sessionId, until, timeoutMs) {
+      return new Promise((resolve) => {
+        const sess = sessions.get(sessionId);
+        const relay = sess && relays.find((r) => r.id === sess.relayId);
+        if (!sess || !relay || relay.status !== "connected" || !sess.token) {
+          resolve({ session_id: sessionId, state: null, timed_out: false, unreachable: true });
+          return;
+        }
+        const waitId = "b" + (++waitSeq);
+        pendingWaits.set(waitId, { resolve, sessionId, relayId: relay.id });
+        send(relay, { type: "wait", session_id: sessionId, session_token: sess.token,
+          until, timeout_ms: timeoutMs, wait_id: waitId });
+      });
+    }
+
+    // Wait across any number of sessions on any number of relays.
+    //   mode "any" — resolves on the first session to reach a named state
+    //   mode "all" — resolves when every session has
+    // A session on a relay this browser cannot reach resolves as `unreachable`
+    // rather than hanging: a broker that cannot see a session must say so.
+    async function brokerWait({ sessions: ids, until, mode = "any", timeoutMs = 600000 }) {
+      const states = Array.isArray(until) ? until : [until];
+      const results = ids.map((id) => relayWait(id, states, timeoutMs));
+      if (mode === "all") {
+        const all = await Promise.all(results);
+        return { brokered: true, mode, results: all,
+                 timed_out: all.some((r) => r.timed_out), unreachable: all.some((r) => r.unreachable) };
+      }
+      const first = await Promise.race(results);
+      return { brokered: true, mode, ...first };
+    }
+
+    // A relay dropping takes its half of a brokered wait with it. Resolve those
+    // waits as unreachable instead of leaving a supervisor parked on a promise
+    // that can no longer be kept.
+    function failWaitsForRelay(relayId) {
+      const doomed = [];
+      for (const [waitId, p] of pendingWaits) if (p.relayId === relayId) doomed.push([waitId, p]);
+      for (const [waitId, p] of doomed) settleWait(waitId, { session_id: p.sessionId, state: null, timed_out: false, unreachable: true });
+    }
+
     // ===== agent combobox ===========================================
     // The relay advertises every agent it detected on PATH, which on a well-
     // equipped machine is a dozen or more. So: type to filter, and order by
@@ -2527,6 +2595,10 @@
     // seam methods reach them through closure, so nothing on the page can read a
     // token off this global. FS is a directory handle, not a secret.
     window.__menagerie = { FS,
+      // The client-side coordination API. `wait` spans relays by composing one
+      // relay-local wait per session; results carry brokered:true, because a
+      // brokered wait lives only as long as this page.
+      wait: brokerWait,
       test: { _sent: [], // frames the demo's fake relay "sent" (for verification)
               async useOPFS() { const root = await navigator.storage.getDirectory(); await setWorkspace(root, "OPFS (test)"); return "ok"; },
               async readJSON(p) { return FS.readJSON(p); }, async listMetas() { return FS.listSessionMetas(); },
@@ -2596,6 +2668,31 @@
                 renderAll();
                 return parent;
               },
+              // A second fake relay + a session on each, for exercising a wait
+              // that spans relays. Returns [idOnRelayA, idOnRelayB].
+              fakeTwoRelays() {
+                const sent = window.__menagerie.test._sent;
+                const hello = { hosts_children: true, agents: ["claude-code"], host_os: "darwin", host_arch: "arm64", transports: ["pty"] };
+                const mkRelay = (id, name) => {
+                  if (relays.find((r) => r.id === id)) return;
+                  relays.push({ id, name, url: "ws://" + id, status: "connected", hello: { ...hello },
+                    ws: { readyState: 1, send: (str) => { try { sent.push(JSON.parse(str)); } catch (e) { void e; } } } });
+                };
+                mkRelay("relayA", "boxA"); mkRelay("relayB", "boxB");
+                const mkSess = (relayId) => {
+                  const s2 = { id: "s-" + relayId, relayId, relayName: relayId, agent: "claude-code", token: "tok-" + relayId,
+                    transport: "pty", status: "running", startedAt: Date.now(), cwd: "~/code", cols: 0, rows: 0, pending: [], flushing: false };
+                  sessions.set(s2.id, s2); return s2.id;
+                };
+                const a = mkSess("relayA"), b = mkSess("relayB");
+                renderAll();
+                return [a, b];
+              },
+              // Drop a fake relay's connection, as a network failure would.
+              dropRelay(id) {
+                const r = relays.find((x) => x.id === id); if (!r) return "none";
+                r.status = "connecting"; failWaitsForRelay(id); renderAll(); return "ok";
+              },
               // Install a fake connected relay advertising `agents` — for exercising
               // the spawn dialog's agent combobox without a real relay.
               fakeRelayAgents(agents) {
@@ -2614,7 +2711,12 @@
               // Seed a past-session meta file without having run a session.
               async writeMeta(meta) { await FS.writeJSON([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".meta.json"], meta); return "ok"; },
               // Feed a frame through the live message path as if the fake relay sent it.
-              deliver(frame) { const r = relays.find((x) => x.id === "fake"); if (r) handleMessage(r, frame); return "ok"; },
+              deliver(frame, relayId) {
+                const r = relays.find((x) => x.id === (relayId || "fake")) || relays.find((x) => x.status === "connected");
+                if (!r) return "no-relay";
+                handleMessage(r, frame);
+                return "ok";
+              },
               // C5 assertion helper: replay a persisted acp-jsonl log through the live render path
               // and return the resulting stream serialization (compare against the live capture).
               async replaySerialize(metaId) {
