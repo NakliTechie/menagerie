@@ -73,13 +73,28 @@ First run creates the config and **copies a registration token to your clipboard
 
 Anything the browser can do, an agent can do too — **the protocol *is* the SDK** ([protocol v1.3](protocol/protocol.md)). A relay handles many agents at once; run more relays only for more *machines*.
 
+## The bridge — many machines, one tab
+
+Agents increasingly run on machines that aren't the one you're at. The terminal doesn't follow them, so the day becomes: ssh into a box, look, ssh into the next, look — hunting for whichever agent stopped and is waiting on you. Each box is an island.
+
+The bridge is the tab holding a live connection to **every** one of those machines at once:
+
+- **One view** — every agent on every machine in one grid. A box you'd otherwise ssh into is a tile beside your local ones.
+- **They come to you** — each session reports its lifecycle. `done` means finished *and nobody has looked yet*, so it holds the attention badge until a human actually looks; reading it over the protocol doesn't clear it. No more polling machines to find the blocked one.
+- **One command reaches across** — spawn, prompt, kill, resume on any machine from the same window, and one `wait` that resolves against sessions on *different* machines: park until any of them needs you, or until all of them finish.
+
+A relay answers only for sessions it hosts and never pretends to own one it can't see, so anything spanning machines is composed by the client — one relay-local wait per machine, joined, returned marked `brokered: true`. That marking is honest bookkeeping: a relay-owned wait has the relay's durability; a brokered one lives as long as the tab that composed it.
+
+**The boxes don't talk to each other.** Relays hold no connection between themselves; every cross-machine behaviour is the client doing it. And because the client is a browser tab, watching a fleet needs no terminal and nothing installed on the device you're watching from — a phone qualifies.
+
 ## What makes it different
 
 - **Zero-server, vendor-neutral** — no daemon we host, agents listed alphabetically, nothing bundled or promoted.
 - **Two ways to watch an agent** — PTY tiles stream the raw terminal; structured (ACP) sessions stream messages, tool calls, and **in-browser diff review**: approve or reject each proposed file edit from the tile. Nothing is special-cased by agent name — any agent that speaks ACP gets the richer face.
 - **You own the data** — sessions, terminal trajectories, *and* structured event logs live in your folder; replay any past run.
 - **Supervisor trees** — an agent can spawn child agents; Menagerie shows the parent→children relationship as a collapsible tree (sidebar + a Grid/Tree toggle), and kills a whole subtree in one step. A supervisor and its workers read as one shape you can collapse, follow, and stop as a unit.
-- **Built for many at once** — live status per tile (running · needs-input · rate-limited · idle), a chime when an agent needs you, drag to reorder, fullscreen or drill into any tile.
+- **Built for many at once** — live status per tile (running · needs-input · rate-limited · done · idle), a chime when an agent needs you, drag to reorder, fullscreen or drill into any tile.
+- **Coordination, not polling** — `wait` parks until a session reaches a state you named, resolved from transitions the relay already tracks; a prompt can arm its wait in the same frame, and is refused outright if the session is sitting on an approval dialog rather than answering it by accident.
 - **Survives refreshes** — relays keep running; reload the page and your live tiles re-attach.
 
 ## Repo layout

@@ -10,6 +10,22 @@ Menagerie is a browser-native control console for fleets of coding agents (mini-
 
 The unit of UI is a **tile**: one agent, one terminal-or-structured view, one status pill, one input bar. Tiles arrange as a flat grid (default) or a nested supervisor tree (toggle). A workspace can hold dozens. A large screen can hold a fleet.
 
+## The bridge
+
+Agents increasingly run on machines that are not the one you are sitting at. The terminal does not follow them, so the day looks like this: SSH into a box, look, SSH into the next, look, hunting for whichever agent stopped and is waiting on a decision. Each box is an island.
+
+**The bridge is the tab that holds a live connection to every one of those machines at once.** A relay sits next to the agents on each machine, owns their terminals, and speaks one WebSocket protocol; the browser connects to all of them together. Everything below follows from that.
+
+1. **One view.** Every agent on every machine in one grid, live. A box you would otherwise SSH into is a tile beside the ones running locally.
+2. **They come to you.** Each session reports its lifecycle. `done` means finished *and nobody has looked yet* — it holds the attention badge until a human actually looks, and reading a session over the protocol deliberately does not clear it. You stop polling machines to find the blocked one.
+3. **One command reaches across.** Spawn, prompt, kill, resume — on any machine, from the same window. A single `wait` can resolve against sessions on different machines: park until any of them needs you, or until all of them finish.
+
+**How it works.** A relay answers only for the sessions it hosts and never pretends to own one it cannot see. Anything spanning machines is composed by the client — one relay-local wait per machine, joined into one result, returned marked `brokered: true`.
+
+**What it is not.** The boxes do not talk to each other. Relays hold no connection between themselves and box A does not know box B exists. Every cross-machine behaviour is the client doing it, which is why the marking matters: a relay-owned wait has the relay's durability, a brokered one lives exactly as long as the tab that composed it. Moving the broker into an agent closes that gap and needs no protocol change; making the boxes themselves talk is a separate, larger question (see `plan/pending.md`).
+
+The client being a browser tab is load-bearing here, not cosmetic: watching the fleet needs no terminal and no install on the device doing the watching, so a phone qualifies.
+
 ## Why it exists
 
 By late 2025 / early 2026 a category emerged: "browser dashboard for parallel coding agents" — amux, clideck, ai-maestro and others. They solve real pain (juggling 5–20 Claude Code sessions across worktrees) but they all share a shape:
