@@ -2706,6 +2706,27 @@
                 renderAll();
                 return "ok";
               },
+              // Drive a resume spawn the way the Resume button does, without
+              // needing a persisted past-session row.
+              spawnResume(relayId, agent, cwd, agentSessionId) {
+                const relay = relays.find((r) => r.id === relayId); if (!relay) return "no-relay";
+                const client_id = crypto.randomUUID();
+                pendingCwd.set(client_id, cwd); pendingTransport.set(client_id, "acp");
+                send(relay, { type: "spawn", agent, cwd, args: [], env: {}, client_id,
+                  transport: "acp", resume_agent_session: agentSessionId });
+                return "ok";
+              },
+              // Read-only snapshot of relay + session state, for driving assertions
+              // from outside the closure. No tokens: a session token would then be
+              // reachable from any script on the page.
+              _state() {
+                return {
+                  relays: relays.map((r) => ({ id: r.id, url: r.url, name: r.name, status: r.status,
+                    agents: (r.hello && r.hello.agents) || [], resume_agents: (r.hello && r.hello.resume_agents) || [] })),
+                  sessions: [...sessions.values()].map((s2) => ({ id: s2.id, agent: s2.agent, relayId: s2.relayId,
+                    transport: s2.transport, status: s2.status, agentSessionId: s2.agentSessionId || null })),
+                };
+              },
               // Reach the fake relay's hello (to vary advertised capabilities).
               _relayHello() { const r = relays.find((x) => x.id === "fake"); return r && r.hello; },
               // Seed a past-session meta file without having run a session.
