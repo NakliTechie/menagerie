@@ -39,7 +39,15 @@ export type Transport = "pty" | "acp";
 export type SignalKind = "kill" | "interrupt" | "resize";
 
 /** Async lifecycle events a relay emits for a session. */
-export type SessionEvent = "exited" | "idle" | "needs_input" | "child_spawned" | "rate_limited" | "stalled";
+/** `done` = the agent finished and nobody has looked yet; a `seen` frame demotes
+ *  it to `idle`. Splitting them is what lets the attention badge mean "waiting
+ *  on you" rather than "was busy at some point" (spec §8.1.1 E5). */
+export type SessionEvent = "exited" | "idle" | "done" | "needs_input" | "child_spawned" | "rate_limited" | "stalled";
+
+/** Lifecycle statuses the relay tracks server-side, so `wait` can resolve
+ *  against them. `unknown` = present but unclassifiable — never a claim of
+ *  completion, and it never satisfies a wait unless the caller named it (E3). */
+export type SessionStatus = "running" | "idle" | "done" | "needs_input" | "stalled" | "rate_limited" | "exited" | "unknown";
 
 /**
  * Error codes carried in `error` frames. The set is open-ended (§4): clients
@@ -206,6 +214,18 @@ export interface SpawnMessage extends BaseMessage {
    * than spawned fresh, so a resume never silently loses the conversation.
    */
   resume_agent_session?: string;
+}
+
+/**
+ * Report that a human actually looked at this session. The ONLY thing that
+ * demotes `done` (finished, unseen) to `idle`. Reading a session over the
+ * protocol must not send this: a supervisor polling its workers would silently
+ * clear the human's attention badge (spec §8.1.1 E5).
+ */
+export interface SeenMessage extends BaseMessage {
+  type: "seen";
+  session_id: string;
+  session_token: string;
 }
 
 /** Send input (keystrokes) to a session's PTY. */

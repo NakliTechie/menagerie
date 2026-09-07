@@ -126,6 +126,9 @@
     .dot-status { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--grey); }
     .s-connected, .s-running { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.15); }
     .s-connecting, .s-idle { background: var(--yellow); }
+    /* done = finished, nobody has looked. Same green as running (the work went
+       fine) but ringed, so it reads as "ready for you" rather than "busy". */
+    .s-done { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.35); }
     .s-connecting { animation: pulse 1.1s ease-in-out infinite; }
     .s-error { background: var(--red); }
     .s-exited { background: var(--grey); box-shadow: none; }
@@ -876,6 +879,10 @@
       else if (msg.event === "stalled") { if (s.status !== "stalled") beep(); setSessionStatus(s, "stalled"); } // likely looping — sticky until you act
       else if (msg.event === "rate_limited") setSessionStatus(s, "rate_limited");
       else if (msg.event === "idle") setSessionStatus(s, "idle");
+      // `done` = finished and not yet looked at. It holds the attention badge
+      // until a human actually looks (markSeen), which is the whole point of
+      // splitting it from `idle` — see spec §8.1.1 E5.
+      else if (msg.event === "done") setSessionStatus(s, "done");
       // child_spawned (v1.2): informational for the parent's owner — the child's own
       // `spawned` frame already created it with parentId, and handleMessage's trailing
       // renderAll() reflows the tree. Explicit no-op so it isn't mistaken for unhandled.
@@ -1047,6 +1054,7 @@
     let drillSid = null;
     function drillOpen() { return $("drill").classList.contains("open"); }
     function openDrill(s) {
+      markSeen(s);
       drillSid = s.id; document.body.classList.add("drilling");
       $("drill").classList.add("open"); syncSidebarActive();
       renderDrill(s);
@@ -1552,6 +1560,16 @@
         $("grid").insertBefore(_dragTile, after ? tile.nextSibling : tile);
       });
     }
+    // Tell the relay a human actually looked at this session, which is the only
+    // thing that demotes `done` to `idle`. Guarded on visibility: a background
+    // tab focusing a tile programmatically is not attention, and clearing the
+    // badge for work nobody saw is exactly the failure this state exists to stop.
+    function markSeen(sess) {
+      if (!sess || sess.status !== "done" || document.visibilityState !== "visible") return;
+      const relay = relays.find((r) => r.id === sess.relayId);
+      if (!relay || !sess.token) return;
+      send(relay, { type: "seen", session_id: sess.id, session_token: sess.token });
+    }
     function focusTile(sess) { if (sess.tile) focusTileEl(sess.tile); }
     function tilesInOrder() { return [...document.querySelectorAll("#grid .tile")]; }
     function focusTileEl(tile) {
@@ -1559,6 +1577,7 @@
       document.querySelectorAll(".tile.focused").forEach((t) => t.classList.remove("focused"));
       tile.classList.add("focused");
       const s = sessions.get(tile.dataset.sid); if (s && s.term) s.term.focus();
+      markSeen(s);
       tile.scrollIntoView({ block: "nearest" });
       syncSidebarActive();
       updateKeybar();
@@ -1625,7 +1644,8 @@
       });
     }
     function updateTimer(sess) { const el = sess.tile && sess.tile.querySelector(".timer"); if (!el) return; const s = Math.floor((Date.now() - sess.startedAt) / 1000); el.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
-    function updateAttention() { const n = [...sessions.values()].filter((s) => s.status === "needs_input" || s.status === "stalled").length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
+    const ATTENTION_STATES = new Set(["needs_input", "stalled", "done"]);
+    function updateAttention() { const n = [...sessions.values()].filter((s) => ATTENTION_STATES.has(s.status)).length; document.title = (n > 0 ? `(${n}) ` : "") + "Menagerie"; }
     // Soft two-tone chime when an agent transitions into needs_input. Web Audio,
     // so no asset to bundle; first call may be gated until the user interacts.
     let _audioCtx;

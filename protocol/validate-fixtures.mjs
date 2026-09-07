@@ -42,7 +42,7 @@ function shape(spec) {
 
 const TRANSPORTS = ["pty", "acp"];
 const SIGNALS = ["kill", "interrupt", "resize"];
-const EVENTS = ["exited", "idle", "needs_input", "child_spawned", "rate_limited", "stalled"];
+const EVENTS = ["exited", "idle", "done", "needs_input", "child_spawned", "rate_limited", "stalled"];
 const OUTCOMES = ["approve", "reject", "approve_always"];
 
 const strArr = (v) => (Array.isArray(v) && v.every(isStr) ? true : "expected string[]");
@@ -91,6 +91,11 @@ const S = {
     agent: [isStr, true],
     started_at: [isStr, true],
     pid: [isNum, true],
+  }),
+  seen: shape({
+    type: [(v) => v === "seen", true],
+    session_id: [isStr, true],
+    session_token: [isStr, true],
   }),
   spawn: shape({
     type: [(v) => v === "spawn", true],

@@ -22,6 +22,14 @@
 > `loadSession` capability; `spawned`/`SessionInfo` carry `agent_session_id`,
 > the agent's own reference — persist it, because handing it back is what
 > reopens the conversation.
+> Extended 2026-09-07 (additive, optional): **`done` vs `idle`** — the relay now
+> tracks lifecycle status server-side (so `wait` has something to resolve
+> against, §8) and a finished agent enters `done`, meaning *finished and nobody
+> has looked yet*. The new `seen` frame is the only thing that demotes it to
+> `idle`; reading a session over the protocol must not, or a supervisor polling
+> its workers would silently clear the human's attention badge. `unknown` joins
+> the status vocabulary as "present but unclassifiable" — never a claim of
+> completion, and it never satisfies a wait unless the caller names it.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 
