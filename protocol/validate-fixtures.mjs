@@ -42,6 +42,7 @@ function shape(spec) {
 
 const TRANSPORTS = ["pty", "acp"];
 const SIGNALS = ["kill", "interrupt", "resize"];
+const STATUSES = ["running", "idle", "done", "needs_input", "stalled", "rate_limited", "exited", "unknown"];
 const EVENTS = ["exited", "idle", "done", "needs_input", "child_spawned", "rate_limited", "stalled"];
 const OUTCOMES = ["approve", "reject", "approve_always"];
 
@@ -91,6 +92,22 @@ const S = {
     agent: [isStr, true],
     started_at: [isStr, true],
     pid: [isNum, true],
+  }),
+  wait: shape({
+    type: [(v) => v === "wait", true],
+    session_id: [isStr, true],
+    session_token: [isStr, true],
+    until: [(v) => strArr(v) && v.length > 0 && v.every((x) => STATUSES.includes(x)), true],
+    timeout_ms: [isNum, false],
+    wait_id: [isStr, false],
+  }),
+  waited: shape({
+    type: [(v) => v === "waited", true],
+    session_id: [isStr, true],
+    wait_id: [isStr, false],
+    state: [(v) => STATUSES.includes(v), true],
+    timed_out: [isBool, true],
+    brokered: [isBool, false],
   }),
   seen: shape({
     type: [(v) => v === "seen", true],

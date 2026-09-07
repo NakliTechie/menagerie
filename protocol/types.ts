@@ -228,6 +228,34 @@ export interface SeenMessage extends BaseMessage {
   session_token: string;
 }
 
+/**
+ * Park until a session reaches one of `until`. Server-owned and event-driven:
+ * the relay resolves on a transition it already tracks, so no client polls.
+ * A wait whose condition is ALREADY true resolves immediately (spec §8.1.1 E1).
+ * Only states the caller names satisfy it — `unknown` included (E3).
+ */
+export interface WaitMessage extends BaseMessage {
+  type: "wait";
+  session_id: string;
+  session_token: string;
+  until: SessionStatus[]; // at least one; an unknown value is refused, not ignored
+  timeout_ms?: number; // absent ⇒ a relay default; there is no unbounded wait
+  wait_id?: string; // echoed back, so one client can hold several waits per session
+}
+
+/** Resolution of a WaitMessage. */
+export interface WaitedMessage extends BaseMessage {
+  type: "waited";
+  session_id: string;
+  wait_id?: string;
+  state: SessionStatus; // the state as it stands — on timeout, NOT the one awaited
+  timed_out: boolean;
+  /** Set by a broker that composed this wait across relays, never by a relay.
+   *  A brokered wait lives only as long as its broker; a relay-owned one has the
+   *  durability of the relay. A supervisor needs to be able to tell them apart. */
+  brokered?: boolean;
+}
+
 /** Send input (keystrokes) to a session's PTY. */
 export interface InputMessage extends BaseMessage {
   type: "input";

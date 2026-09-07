@@ -30,6 +30,13 @@
 > its workers would silently clear the human's attention badge. `unknown` joins
 > the status vocabulary as "present but unclassifiable" — never a claim of
 > completion, and it never satisfies a wait unless the caller names it.
+> Also 2026-09-07: **`wait` / `waited`** (spec §8.1) — a client parks until a
+> session reaches one of the states it names, and the relay resolves it from the
+> transitions it already tracks. A wait whose condition already holds resolves
+> immediately; only named states satisfy it; session exit drains every waiter;
+> there is no unbounded server-side wait. `waited.brokered` is set by a client
+> that composed a wait across relays on the relay's behalf, so a supervisor can
+> tell a brokered wait (lives as long as its broker) from a relay-owned one.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 
