@@ -129,6 +129,9 @@
     /* done = finished, nobody has looked. Same green as running (the work went
        fine) but ringed, so it reads as "ready for you" rather than "busy". */
     .s-done { background: var(--green); box-shadow: 0 0 0 3px rgba(63,185,80,.35); }
+    /* unknown: present, but the agent cannot say what it is doing. Hollow, so it
+       never reads as a completion claim. */
+    .s-unknown { background: transparent; border: 1.5px solid var(--muted); box-shadow: none; }
     .s-connecting { animation: pulse 1.1s ease-in-out infinite; }
     .s-error { background: var(--red); }
     .s-exited { background: var(--grey); box-shadow: none; }
@@ -883,6 +886,10 @@
       // until a human actually looks (markSeen), which is the whole point of
       // splitting it from `idle` — see spec §8.1.1 E5.
       else if (msg.event === "done") setSessionStatus(s, "done");
+      // From a self-report (§8.3): `running` when an agent says it is working
+      // again, `unknown` when it cannot classify itself. `unknown` is never a
+      // completion claim, so it stays out of the attention badge.
+      else if (msg.event === "running" || msg.event === "unknown") setSessionStatus(s, msg.event);
       // child_spawned (v1.2): informational for the parent's owner — the child's own
       // `spawned` frame already created it with parentId, and handleMessage's trailing
       // renderAll() reflows the tree. Explicit no-op so it isn't mistaken for unhandled.

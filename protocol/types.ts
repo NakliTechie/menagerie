@@ -42,7 +42,10 @@ export type SignalKind = "kill" | "interrupt" | "resize";
 /** `done` = the agent finished and nobody has looked yet; a `seen` frame demotes
  *  it to `idle`. Splitting them is what lets the attention badge mean "waiting
  *  on you" rather than "was busy at some point" (spec §8.1.1 E5). */
-export type SessionEvent = "exited" | "idle" | "done" | "needs_input" | "child_spawned" | "rate_limited" | "stalled";
+export type SessionEvent =
+  | "exited" | "idle" | "done" | "needs_input" | "child_spawned" | "rate_limited" | "stalled"
+  /** only from a self-report (§8.3): present but unclassifiable */
+  | "unknown" | "running";
 
 /** Lifecycle statuses the relay tracks server-side, so `wait` can resolve
  *  against them. `unknown` = present but unclassifiable — never a claim of
@@ -235,6 +238,22 @@ export interface SeenMessage extends BaseMessage {
  * Only states the caller names satisfy it — `unknown` included (E3).
  */
 /** The wait half of an atomic prompt+wait (spec §8.2). */
+/**
+ * An agent declaring its own lifecycle state (spec §8.3). More reliable than
+ * the relay's output heuristics, which is the point. E9: from the first report
+ * the relay stops applying those heuristics to this session — one status
+ * authority, never two, because two sources make the status flicker and neither
+ * can be debugged. `exited` is not declarable: a process ending is observed.
+ * `message` is display-only and never drives a wait.
+ */
+export interface ReportStatusMessage extends BaseMessage {
+  type: "report_status";
+  session_id: string;
+  session_token: string;
+  state: Exclude<SessionStatus, "exited">;
+  message?: string;
+}
+
 export interface WaitSpec {
   until: SessionStatus[];
   timeout_ms?: number;

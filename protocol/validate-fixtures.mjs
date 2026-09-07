@@ -43,7 +43,7 @@ function shape(spec) {
 const TRANSPORTS = ["pty", "acp"];
 const SIGNALS = ["kill", "interrupt", "resize"];
 const STATUSES = ["running", "idle", "done", "needs_input", "stalled", "rate_limited", "exited", "unknown"];
-const EVENTS = ["exited", "idle", "done", "needs_input", "child_spawned", "rate_limited", "stalled"];
+const EVENTS = ["exited", "idle", "done", "needs_input", "child_spawned", "rate_limited", "stalled", "unknown", "running"];
 const OUTCOMES = ["approve", "reject", "approve_always"];
 
 const strArr = (v) => (Array.isArray(v) && v.every(isStr) ? true : "expected string[]");
@@ -92,6 +92,14 @@ const S = {
     agent: [isStr, true],
     started_at: [isStr, true],
     pid: [isNum, true],
+  }),
+  report_status: shape({
+    type: [(v) => v === "report_status", true],
+    session_id: [isStr, true],
+    session_token: [isStr, true],
+    // `exited` is not self-declarable — a process ending is observed.
+    state: [(v) => STATUSES.includes(v) && v !== "exited", true],
+    message: [isStr, false],
   }),
   wait: shape({
     type: [(v) => v === "wait", true],

@@ -1,0 +1,7 @@
+{
+  "type": "report_status",
+  "session_id": "a1b2c3d4e5f6a7b8",
+  "session_token": "s3cr3t-session-token-not-a-real-one",
+  "state": "needs_input",
+  "message": "which branch should I target?"
+}

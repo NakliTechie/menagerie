@@ -42,6 +42,11 @@
 > decision is refused with `session_blocked` and **nothing is sent**: the pending
 > approval dialog would read the prompt as its answer, approving or rejecting a
 > tool call the sender never saw.
+> **`report_status`** (§8.3) lets an agent declare its own lifecycle state, which
+> beats guessing from output. From the first report the relay stops applying its
+> heuristics to that session — one status authority per session, never two, since
+> two sources make the status flicker and neither can be debugged. `exited` is
+> not self-declarable: a process ending is observed, not announced.
 
 The WebSocket protocol every Menagerie relay and client implements. It is the durable artifact: the browser app is one client, a supervisor agent is another, a future native app could be a third. Anything the browser can do, an agent can do — there is no privileged client.
 
