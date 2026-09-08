@@ -1347,7 +1347,7 @@
     async function openStructuredReplay(meta) {
       closeDrawer();
       const f = await FS.readFile([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".acp.jsonl"]);
-      if (!f) { alert("No event log captured for this session."); return; }
+      if (!f) { toast("No event log captured for this session.", false); return; }
       const lines = (await f.text()).split("\n").filter((l) => l.trim());
       const r = { id: "replay-" + meta.id, agent: meta.agent, relayName: meta.relay_name || "", replay: true, transport: "acp", status: "replay", startedAt: Date.parse(meta.started_at) || Date.now(), cols: 0, rows: 0 };
       initAcpState(r);
@@ -1720,7 +1720,7 @@
       closeDrawer();
       if (meta.capture === "acp-jsonl") return openStructuredReplay(meta); // dispatch on the recorded format, never a guess
       const bytes = await FS.readBytes([MENAGERIE_DIR, SESSIONS_DIR, meta.id + ".pty"]);
-      if (!bytes) { alert("No trajectory captured for this session."); return; }
+      if (!bytes) { toast("No trajectory captured for this session.", false); return; }
       const r = { id: "replay-" + meta.id, agent: meta.agent, relayName: meta.relay_name || "", replay: true, status: "replay", bytes, pos: 0, playing: false, speed: 1, cols: 0, rows: 0 };
       sessions.set(r.id, r); createReplayTile(r); updateEmpty();
     }
@@ -1867,12 +1867,18 @@
     // Grid grouping: in tree view the grid becomes a vertical stack ordered by the
     // tree, children indented one step under their parent with a left band; a
     // collapsed parent hides its subtree's tiles. Flat (Grid) view is untouched.
+    // M2: tree order is derived from parentage, so a manual drag would be undone
+    // by the next reflow. The drag handle is off in tree view, live in flat view.
+    function setDragHandles(live, on) {
+      for (const s of live) { const head = s.tile.querySelector(".tile-head"); if (head) head.setAttribute("draggable", on ? "true" : "false"); }
+    }
     function regroupGrid() {
       const grid = $("grid");
       if (grid.querySelector(".tile.dragging")) return; // don't fight an in-progress drag
       const live = [...sessions.values()].filter((s) => !s.replay && s.tile);
       const tree = treeActive(live);
       grid.classList.toggle("tree", tree);
+      setDragHandles(live, !tree);
       if (!tree) {
         for (const s of live) { s.tile.style.marginLeft = ""; s.tile.style.display = ""; s.tile.classList.remove("tile-child"); }
         return;
