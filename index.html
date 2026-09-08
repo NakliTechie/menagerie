@@ -819,7 +819,11 @@
         // don't dedupe the way tool calls do). persistedSeq is preserved so already
         // saved frames are never re-persisted.
         if (s.transport === "acp" && s.acp) resetAcpTranscript(s);
-        setSessionStatus(s, "running"); fitTile(s);
+        // The relay's tracked status (SessionInfo.status) is authoritative: a session
+        // that finished while the tab was away comes back `done`, badge and all,
+        // instead of reading as running (live-check 2026-09-08). An older relay
+        // omits it ⇒ running, as before.
+        setSessionStatus(s, s.attachStatus || "running"); delete s.attachStatus; fitTile(s);
       },
       output(relay, msg) {
         const s = sessions.get(msg.session_id); if (!s || !s.term) return;
@@ -855,7 +859,8 @@
       const existing = sessions.get(info.session_id);
       if (existing) {
         if (existing.status === "lost") {
-          setSessionStatus(existing, attachedStatus(info));
+          existing.attachStatus = info.status;
+          setSessionStatus(existing, "running");
           if (existing.ti) existing.ti.disabled = false;
           if (existing.sendBtn) existing.sendBtn.disabled = false;
           send(relay, { type: "attach", session_id: info.session_id });
@@ -869,15 +874,9 @@
       const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "", info.parent_session_id, info.agent_session_id);
       initAcpState(sess); sessions.set(sess.id, sess);
       if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
-      applyAttachedStatus(sess, info);
+      sess.attachStatus = info.status; // applied by `attached`, which used to assume running
       send(relay, { type: "attach", session_id: info.session_id });
     }
-    // The relay's tracked status is authoritative on re-attach: a session that
-    // finished while the tab was away comes back `done`, badge and all, instead of
-    // silently reading as running (live-check 2026-09-08). An older relay omits
-    // it ⇒ running, as before.
-    function attachedStatus(info) { return info.status || "running"; }
-    function applyAttachedStatus(sess, info) { if (info.status && info.status !== "running") setSessionStatus(sess, info.status); }
     function handleSessionExit(s, msg) {
       setSessionStatus(s, "exited");
       if (s.ti) s.ti.disabled = true; if (s.sendBtn) s.sendBtn.disabled = true;
