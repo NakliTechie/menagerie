@@ -14,9 +14,9 @@ Spec: [`docs/design/v1.2-spec.md`](docs/design/v1.2-spec.md) (locked 2026-08-27)
 | C5 re-attach rebuilds tree | **complete** (2026-08-27) — parentId flows via SessionInfo (C3); orphan (parent not live / exited / self-parent / cycle) renders at root with ⤺ marker, never vanishes; child_spawned explicit no-op. Verified via fakeOrphan + fakeCycle seams. |
 | C6 close-out | **complete** (2026-08-27) — VISION/README v1.2-shipped, relay 0.6.0; fresh-context forward-pass (2 agents) — relay clean, browser 2 High (grid thrash, cycle guard) + 1 Med fixed & re-verified; whole-project gate GREEN (go test -race, fixtures 22/22, lint 0); **merged to main + pushed (`bf87ae2`)**. Report: plan/forward-pass-2026-08-27-v1.2.md. |
 
-**v1.2.0 shipped to `main` 2026-08-27.** Deferred to v1.2.x: the coordination layer
-(`wait` / atomic prompt+wait / self-reported status — spec §8), cross-relay child-spawn,
-multi-workspace tabs.
+**v1.2.0 shipped to `main` 2026-08-27. Relay v0.6.0 released 2026-09-08.** The
+coordination layer (`wait` §8.1 / atomic prompt+wait §8.2 / `report_status` §8.3) has
+since shipped. Still deferred: cross-relay child-spawn, multi-workspace tabs.
 
 ---
 

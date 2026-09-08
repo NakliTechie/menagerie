@@ -33,13 +33,7 @@ curl -L -o menagerie-relay \
 chmod +x menagerie-relay
 ```
 
-> **Release status (2026-09-01):** Homebrew and the latest prebuilt binaries install relay **v0.4.0** (protocol 1.1), which supports PTY sessions and live re-attach. This repository contains relay **v0.6.0** (protocol 1.3), adding structured ACP sessions and supervisor trees. Until the next relay release, build the current feature line from source:
->
-> ```sh
-> git clone https://github.com/NakliTechie/menagerie.git
-> cd menagerie/relay-go
-> go build -o menagerie-relay ./cmd/menagerie-relay
-> ```
+> **Release status (2026-09-08):** Homebrew and the prebuilt binaries install relay **v0.6.0** (protocol 1.3) — structured ACP sessions, supervisor trees with subtree kill, `wait` / atomic prompt+wait / `report_status`, and agent auto-detection against a 67-agent registry.
 
 **Run it** — once per machine, then leave it running (drop the `./` if you installed via Homebrew):
 
