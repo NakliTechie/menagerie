@@ -168,6 +168,7 @@ export interface SessionInfo {
   transport?: Transport; // protocol 1.2; absent ⇒ pty (so re-attach doesn't guess from agent capability)
   parent_session_id?: string; // protocol 1.3; present for a child session, so re-attach rebuilds the tree
   agent_session_id?: string; // the agent's own session reference, if it issued one
+  status?: SessionStatus; // the relay's tracked status (additive, 2026-09-08); absent ⇒ assume running (pre-2026-09-08 relay)
 }
 
 /** Live session list, sent right after `registered`, so a reconnecting client can re-attach (protocol 1.1). */

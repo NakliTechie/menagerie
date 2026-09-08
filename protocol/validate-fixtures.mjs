@@ -143,6 +143,7 @@ const S = {
     started_at: [isStr, true],
     parent_session_id: [isStr, false], // protocol 1.3
     agent_session_id: [isStr, false], // the agent's own session reference
+    status: [isStr, false], // the relay's tracked status, additive 2026-09-08
   }),
   output: shape({
     type: [(v) => v === "output", true],

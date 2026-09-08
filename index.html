@@ -605,6 +605,7 @@
     const sessions = new Map();
     const pendingCwd = new Map(); // client_id → cwd, to label the session in its `spawned` reply
     const pendingTransport = new Map(); // client_id → "pty"|"acp", same correlation
+    const pendingTask = new Map(); // client_id → task text for a structured session, sent as its first prompt once `spawned` lands
     let rehydrating = false;
     const $ = (id) => document.getElementById(id);
 
@@ -803,6 +804,8 @@
         sess.token = msg.session_token;
         pendingCwd.delete(msg.client_id); pendingTransport.delete(msg.client_id);
         initAcpState(sess); sessions.set(sess.id, sess); mountTile(sess); writeSessionMeta(sess);
+        const task = pendingTask.get(msg.client_id); pendingTask.delete(msg.client_id);
+        if (task && sess.transport === "acp") sendPrompt(sess, task);
       },
       // On (re)connect the relay lists live sessions; (re-)attach each so a full
       // refresh (fresh map → new tile) or a transient drop (revive "lost" tile) restores them.
@@ -852,7 +855,7 @@
       const existing = sessions.get(info.session_id);
       if (existing) {
         if (existing.status === "lost") {
-          setSessionStatus(existing, "running");
+          setSessionStatus(existing, attachedStatus(info));
           if (existing.ti) existing.ti.disabled = false;
           if (existing.sendBtn) existing.sendBtn.disabled = false;
           send(relay, { type: "attach", session_id: info.session_id });
@@ -866,8 +869,15 @@
       const sess = makeSession(relay, info.session_id, info.agent, transport, Date.parse(info.started_at) || Date.now(), "", info.parent_session_id, info.agent_session_id);
       initAcpState(sess); sessions.set(sess.id, sess);
       if (sess.transport === "acp") createStreamTile(sess); else if (window.Terminal) createTile(sess);
+      applyAttachedStatus(sess, info);
       send(relay, { type: "attach", session_id: info.session_id });
     }
+    // The relay's tracked status is authoritative on re-attach: a session that
+    // finished while the tab was away comes back `done`, badge and all, instead of
+    // silently reading as running (live-check 2026-09-08). An older relay omits
+    // it ⇒ running, as before.
+    function attachedStatus(info) { return info.status || "running"; }
+    function applyAttachedStatus(sess, info) { if (info.status && info.status !== "running") setSessionStatus(sess, info.status); }
     function handleSessionExit(s, msg) {
       setSessionStatus(s, "exited");
       if (s.ti) s.ti.disabled = true; if (s.sendBtn) s.sendBtn.disabled = true;
@@ -904,7 +914,7 @@
       // A failed spawn never sends a `spawned` reply, so its pendingCwd/pendingTransport
       // entries would leak (the error frame carries no client_id to key off). Spawns
       // are modal — one at a time — so any pending entries here are stale; clear them.
-      pendingCwd.clear(); pendingTransport.clear();
+      pendingCwd.clear(); pendingTransport.clear(); pendingTask.clear();
       notify((msg.code || "error") + ": " + (msg.message || ""), false);
     }
     function handleMessage(relay, msg) {
@@ -1505,6 +1515,8 @@
     }
 
     // ===== sessions / tiles ===========================================
+    // A structured session's Task rides in pendingTask until `spawned` hands it a token.
+    function holdTask(clientId, tr, task) { if (tr === "acp" && task) pendingTask.set(clientId, task); }
     function spawn(relayId, agent, cwd, task, customCmd, transport) {
       const relay = relays.find((r) => r.id === relayId);
       if (!relay || relay.status !== "connected") { showSpawnResult("relay not connected", false); return; }
@@ -1513,8 +1525,10 @@
       const tr = transport || (supportsACP(relay, agent) ? "acp" : "pty");
       pendingTransport.set(client_id, tr);
       // PTY shims take the initial task as argv; structured sessions get theirs
-      // through the first `prompt` instead.
+      // through the first `prompt`, sent from the `spawned` handler once the
+      // session has a token (a spawn with a Task and no prompt was a silent no-op).
       const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (tr === "pty" && task ? [task] : []);
+      holdTask(client_id, tr, task);
       const parentId = resolveSpawnParent(relayId); // v1.2: only if a live session on THIS relay
       spawnChildParentId = null;
       send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr, parent_session_id: parentId });

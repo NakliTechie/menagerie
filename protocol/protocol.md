@@ -9,6 +9,9 @@
 > parent; `signal{kill}` accepts `subtree: true` (kill descendants leaf-first);
 > `hello.hosts_children` advertises support. A pre-1.3 client ignores every new
 > field and sees a flat grid. All earlier messages are unchanged.
+> Extended 2026-09-08 (additive, optional): `SessionInfo.status` carries the relay's
+> tracked lifecycle status so a re-attach restores `done`/`idle` instead of assuming
+> `running`; absent from an older relay ⇒ assume `running`.
 > Extended 2026-09-07 (additive, optional): **conversation restore** —
 > `spawn.resume_agent_session` asks the agent to reopen one of *its own* past
 > conversations, and `hello.resume_agents` lists the agents that can. Distinct
