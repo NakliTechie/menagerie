@@ -54,7 +54,16 @@ jobs:
           3. macOS only — clear Gatekeeper: \`xattr -dr com.apple.quarantine menagerie-relay-*\`
           4. \`./menagerie-relay-* serve\` — first run creates the config and copies the registration token to your clipboard; paste it into Menagerie. Always-on: \`./menagerie-relay-* service install\`.
 
-          New in this release: one-command \`serve\` + token-to-clipboard, always-on \`service install\` (launchd/systemd), tmux-backed sessions that survive a relay restart, and loop/stall detection. Verify with \`shasum -a 256 -c SHA256SUMS\`. No prebuilt for your platform? \`go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest\`."
+          New in 0.6.0 (protocol 1.3):
+          - Structured ACP sessions — agents speak the Agent Client Protocol, not just PTY bytes; drill-in diff review and event-log replay.
+          - Supervisor trees — an agent spawns children; parentage is tracked and \`signal{kill,subtree}\` stops a whole subtree leaf-first.
+          - Coordination — \`wait\` (park until a session reaches a named state), atomic prompt+wait, and \`report_status\` so an agent declares its own state.
+          - done vs idle — a finished agent holds your attention until you actually look; reading it over the protocol does not clear the badge.
+          - Agent auto-detection — installed agents found on PATH against a 67-agent registry, with per-agent resume argv.
+          - Conversation restore — \`spawn.resume_agent_session\` and ACP \`session/load\`.
+          - Hardening — races and a send-on-closed-channel panic fixed, permissions fail closed, service units escaped.
+
+          Verify with \`shasum -a 256 -c SHA256SUMS\`. No prebuilt for your platform? \`go install github.com/NakliTechie/menagerie/relay-go/cmd/menagerie-relay@latest\`."
           # Idempotent: create the release, or just (re)upload assets if it already exists.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber menagerie-relay-* SHA256SUMS
