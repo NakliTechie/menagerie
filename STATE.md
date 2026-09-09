@@ -20,6 +20,46 @@ since shipped. Still deferred: cross-relay child-spawn, multi-workspace tabs.
 
 ---
 
+## Fleet milestone — Mastra verdict (addendum 01 §1, gate on C2)
+
+**Verdict: `wedge holds`.**
+
+Read 2026-09-09: [`docs/sandbox/overview`](https://mastra.ai/docs/sandbox/overview),
+[`docs/workspace/overview`](https://mastra.ai/docs/workspace/overview),
+[`blog/introducing-managed-sandboxes-and-filesystems-for-mastra-platform`](https://mastra.ai/blog/introducing-managed-sandboxes-and-filesystems-for-mastra-platform).
+
+**Q1 — same job as `materialise`, or a different one? Different one.** Their Workspace is a
+configuration container that binds an agent to a sandbox plus mounted filesystems; the docs
+state it "doesn't handle git worktrees, branches, port allocation, environment templating, or
+service startup", and no health check or readiness probe is documented. Of `materialise`'s six
+stages — ports → files → commands → services → health → escape — their model covers files (as
+provider mounts, not copies/templates) and command execution, and none of ports-from-a-range,
+`cache_key` command skipping, per-repo/per-workspace service startup, or health-gated readiness.
+They isolate **where code runs**; `materialise` makes **a checkout runnable**. The two compose;
+they do not collide.
+
+**Q2 — capability or only hosting? Capability, but the hosting contrast is not ours to make.**
+The addendum's framing ("their model assumes their sandboxes on their platform") is
+factually wrong as a blanket claim: they ship `LocalSandbox` (executes on the application host)
+and a Docker provider among twelve, and the Workspace API is provider-pluggable. The managed
+*Platform* filesystem/sandbox is hosted-and-billed, but the framework is not hosted-only.
+So the difference that survives is the capability one in Q1, not "they're cloud, we're local".
+**Portfolio copy at C6 must not lean on a hosted-only contrast** — it would be false and checkable.
+
+**Q3 — anything to adopt? Two real gaps, both escalating.** Their sandboxes have lifecycle
+**hooks** (`onStart` / `onStop` / `onDestroy`) and **background-process supervision**
+(`execute_command` with `background: true`, plus `get_process_output`, `kill_process`, and
+`onStdout` / `onStderr` / `onExit` callbacks). `materialise` has neither. `services` starts a
+process and `health` gates readiness once; nothing supervises a service afterwards or surfaces
+its output, so a service that dies after a green health probe leaves the workspace `ready` and
+broken. Adding either as a declared field changes the `materialise` schema, which is locked
+decision D1 — **escalated to the operator, not adopted unilaterally** (see `plan/pending.md`
+Open questions).
+
+Consequence for the build: C2 proceeds as specced. C0 and C1 were never gated.
+
+---
+
 # STATE — v1.1 build ("Structured transport")
 
 Working state for the v1.1 build cycle defined in `~/Downloads/MENAGERIE-v1.1-AGENT-HANDOFF.md`.
