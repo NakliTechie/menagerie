@@ -50,7 +50,7 @@ non-interactively (e.g. as a service) it stays quiet, keeping the token out of
 log files. It logs the relay name, listen address, TLS state, and origins:
 
 ```
-relay "m4pro-home" listening on 127.0.0.1:7878 (tls=false, origins=[https://menagerie.naklitechie.com])
+relay "m4pro-home" listening on 127.0.0.1:7878 (tls=false, origins=[https://menagerie.naklitechie.com https://naklios.dev])
 ```
 
 `serve` shuts down cleanly on `SIGINT`/`SIGTERM`.
@@ -102,8 +102,9 @@ tls_key  = ""
 # rotate with `menagerie-relay token rotate`.
 registration_token = "…generated…"
 
-# Origins allowed to open a WebSocket (the origin check is the gate).
-allowed_origins = ["https://menagerie.naklitechie.com"]
+# Origins allowed to open a WebSocket (the origin check is the gate). The second
+# entry is NakliOS, which hosts a same-origin mirror of the app (docs/naklios.md).
+allowed_origins = ["https://menagerie.naklitechie.com", "https://naklios.dev"]
 
 # Agents this relay can spawn. The table key is the id the browser shows
 # (alphabetical, no agent featured); `command` is the executable (PATH lookup).
@@ -147,14 +148,24 @@ token). On WebSocket upgrade the relay rejects any browser origin not in
 `allowed_origins` with `403`. The default allowlist is exactly:
 
 ```toml
-allowed_origins = ["https://menagerie.naklitechie.com"]
+allowed_origins = ["https://menagerie.naklitechie.com", "https://naklios.dev"]
 ```
 
+The second entry is [NakliOS](https://naklios.dev), which runs Menagerie as a
+window inside its desktop by serving a same-origin mirror of this app at
+`naklios.dev/apps/menagerie/` — from there the page's `Origin` is
+`https://naklios.dev`. A relay configured before that entry existed keeps its
+old `relay.toml`; add the second origin by hand to use Menagerie from NakliOS.
+See [naklios.md](./naklios.md).
+
 To run the app from a local static server during development (e.g.
-`python3 -m http.server 8000` from the repo root), add that origin:
+`python3 -m http.server 8000` from the repo root), a loopback-bound relay already
+accepts `http://localhost:*` and `http://127.0.0.1:*` origins
+(`allow_localhost_origins`, on by default) — that also covers a NakliOS checkout
+served locally. Only a relay bound beyond loopback needs the dev origin listed:
 
 ```toml
-allowed_origins = ["https://menagerie.naklitechie.com", "http://localhost:8000"]
+allowed_origins = ["https://menagerie.naklitechie.com", "https://naklios.dev", "http://localhost:8000"]
 ```
 
 > **Do not add `"null"`.** Browsers send `Origin: null` for any sandboxed

@@ -1,0 +1,30 @@
+# NakliOS same-origin mirroring (docs/naklios.md). Menagerie's workspace is a folder
+# opened with the File System Access API, which is blocked in a cross-origin iframe,
+# so NakliOS mirrors this file same-origin under naklios.dev/apps/menagerie/. On
+# every push to main that touches a shipped file, this fires the nakliOS
+# mirror-sync workflow so the mirror re-pulls at the new commit.
+#
+# Requires repo secret NAKLIOS_DISPATCH_TOKEN — a fine-grained PAT with
+# Actions:write on NakliTechie/nakliOS (one token, reused across all source
+# repos). That token is a credential and is NOT created here.
+name: Notify NakliOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'manifest.webmanifest'
+      - 'icon.svg'
+      - 'icon-180.png'
+      - 'icon-192.png'
+      - 'icon-512.png'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger nakliOS mirror sync
+        env:
+          GH_TOKEN: ${{ secrets.NAKLIOS_DISPATCH_TOKEN }}
+        run: gh workflow run sync-mirrors.yml --repo NakliTechie/nakliOS
