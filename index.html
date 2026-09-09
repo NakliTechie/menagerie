@@ -2613,7 +2613,169 @@
     // the live `relays`/`sessions` (they carry registration + session tokens) — the
     // seam methods reach them through closure, so nothing on the page can read a
     // token off this global. FS is a directory handle, not a secret.
-    window.__menagerie = { FS,
+    // --- fleet-validate:start ---
+    // Mirror of relay-go/fleet's validator (D6: one ingress, and the browser must
+    // refuse the same documents the relay refuses). The Go package is
+    // authoritative; `node relay-go/fleet/mirror-check.mjs` asserts the two agree
+    // on every fixture, so a rule added on one side and not the other fails a gate
+    // rather than drifting silently. Split into one checker per section: the
+    // single-function version tripped the complexity gate, and the sections are
+    // independent anyway.
+    const FLEET_SPEC_VERSION = "menagerie.fleet.v1";
+    const FLEET_BUILTIN_VARS = ["WORKSPACE", "BRANCH", "REPO_ROOT"];
+    const FLEET_SECRET_PATTERNS = [
+      ["an AWS access key id", /\bAKIA[0-9A-Z]{16}\b/],
+      ["an OpenAI-style API key", /\bsk-[A-Za-z0-9_-]{16,}\b/],
+      ["a GitHub token", /\bghp_[A-Za-z0-9]{20,}\b/],
+      ["inline database credentials", /\b[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/\s:@"]+:[^/\s:@"]+@/],
+    ];
+    const fleetStr = (v) => typeof v === "string" && v.trim() !== "";
+
+    function fleetLintSecrets(text) {
+      const out = [];
+      text.split("\n").forEach((line, i) => {
+        for (const [what, re] of FLEET_SECRET_PATTERNS) {
+          if (re.test(line)) out.push({ path: "/#line=" + (i + 1), code: "secret_in_spec",
+            message: "line " + (i + 1) + " looks like " + what + "; the spec is committed, so secrets are referenced, never stored (D4)" });
+        }
+      });
+      return out;
+    }
+
+    // ${VAR} resolves against the allocated ports plus the builtins. Nothing else:
+    // no environment inheritance, no arbitrary shell expansion in declared fields.
+    function fleetVarIssues(path, value, declared) {
+      const out = [];
+      for (const m of String(value || "").matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+        if (!declared.has(m[1])) out.push({ path, code: "undeclared_var", message: "${" + m[1] + "} resolves against nothing" });
+      }
+      return out;
+    }
+
+    function fleetCheckIdentity(d, add) {
+      if (!fleetStr(d.spec)) add("/spec", "required", "spec is required and must be " + FLEET_SPEC_VERSION);
+      else if (d.spec !== FLEET_SPEC_VERSION) add("/spec", "unsupported_version", "unsupported spec version " + d.spec);
+      if (!fleetStr(d.name)) add("/name", "required", "name is required");
+      if (!fleetStr(d.repo)) add("/repo", "required", "repo is required");
+      if (!fleetStr(d.topology)) add("/topology", "required", "topology is required and has no default — name it");
+    }
+
+    function fleetCheckPorts(m, add, declared) {
+      (m.ports || []).forEach((p, i) => {
+        const base = "/workspace/materialise/ports/" + i;
+        if (fleetStr(p.name)) declared.add(p.name);
+        else add(base + "/name", "required", "port entry needs a name");
+        const r = p.range || [];
+        if (!(r[0] > 0 && r[1] > 0 && r[0] <= r[1])) add(base + "/range", "invalid_range", "range must be [low, high] with 0 < low <= high");
+      });
+    }
+
+    function fleetCheckFiles(m, add, declared) {
+      (m.files || []).forEach((f, i) => {
+        const base = "/workspace/materialise/files/" + i;
+        const from = fleetStr(f.from), tmpl = fleetStr(f.template);
+        if (!from && !tmpl) add(base, "required", "file entry needs exactly one of from or template");
+        else if (from && tmpl) add(base, "exclusive", "file entry has both from and template");
+        if (!fleetStr(f.to)) add(base + "/to", "required", "file entry needs a destination path");
+        const to = String(f.to || "");
+        if (to.startsWith("/") || to.includes("..")) add(base + "/to", "escapes_workspace", "destination must stay inside the workspace root");
+        for (const is of fleetVarIssues(base + "/to", f.to, declared)) add(is.path, is.code, is.message);
+        (f.vars || []).forEach((v) => {
+          if (!declared.has(v)) add(base + "/vars", "undeclared_var", "template var " + v + " is not an allocated port or a builtin");
+        });
+      });
+    }
+
+    function fleetCheckCommands(m, add, declared) {
+      (m.commands || []).forEach((c, i) => {
+        const base = "/workspace/materialise/commands/" + i;
+        if (!fleetStr(c.run)) add(base + "/run", "required", "command entry needs a run string");
+        for (const is of fleetVarIssues(base + "/run", c.run, declared)) add(is.path, is.code, is.message);
+      });
+    }
+
+    function fleetCheckServices(m, add, declared) {
+      (m.services || []).forEach((s, i) => {
+        const base = "/workspace/materialise/services/" + i;
+        if (!fleetStr(s.name)) add(base + "/name", "required", "service entry needs a name");
+        if (!fleetStr(s.run)) add(base + "/run", "required", "service entry needs a run string");
+        if (fleetStr(s.port_var) && !declared.has(s.port_var)) add(base + "/port_var", "undeclared_var", "port_var " + s.port_var + " is not a declared port");
+        for (const is of fleetVarIssues(base + "/run", s.run, declared)) add(is.path, is.code, is.message);
+      });
+    }
+
+    function fleetCheckHealth(m, add, declared) {
+      (m.health || []).forEach((p, i) => {
+        const base = "/workspace/materialise/health/" + i;
+        if (p.probe === "http") {
+          if (!fleetStr(p.url)) add(base + "/url", "required", "http probe needs a url");
+          for (const is of fleetVarIssues(base + "/url", p.url, declared)) add(is.path, is.code, is.message);
+        } else if (p.probe === "command") {
+          if (!fleetStr(p.run)) add(base + "/run", "required", "command probe needs a run string");
+          for (const is of fleetVarIssues(base + "/run", p.run, declared)) add(is.path, is.code, is.message);
+        } else if (fleetStr(p.probe)) add(base + "/probe", "unsupported", "unknown probe kind " + p.probe);
+        else add(base + "/probe", "required", "probe kind is required: http or command");
+      });
+    }
+
+    function fleetCheckWorkspace(d, add, declared) {
+      const ws = d.workspace || {}, m = ws.materialise || {};
+      fleetCheckPorts(m, add, declared);
+      const declaredCount = (m.ports || []).length + (m.files || []).length + (m.commands || []).length;
+      if (!fleetStr(ws.isolation) && declaredCount === 0 && !fleetStr(m.escape)) {
+        add("/workspace", "required", "workspace is required and must declare an isolation and a materialise block");
+      }
+      if (fleetStr(ws.isolation) && ws.isolation !== "worktree") {
+        add("/workspace/isolation", "unsupported", 'only "worktree" isolation is supported');
+      }
+      fleetCheckFiles(m, add, declared);
+      fleetCheckCommands(m, add, declared);
+      fleetCheckServices(m, add, declared);
+      fleetCheckHealth(m, add, declared);
+    }
+
+    function fleetCheckRoster(d, add) {
+      if (!Array.isArray(d.roster) || d.roster.length === 0) add("/roster", "required", "roster needs at least one role");
+      (d.roster || []).forEach((r, i) => {
+        const base = "/roster/" + i;
+        if (!fleetStr(r.agent)) add(base + "/agent", "required", "role needs an agent");
+        if (!fleetStr(r.role)) add(base + "/role", "required", "role needs a role name");
+        if (!(Number(r.count) >= 1)) add(base + "/count", "invalid", "count must be at least 1");
+        if (Number(r.max_depth) < 0) add(base + "/max_depth", "invalid", "max_depth cannot be negative");
+      });
+    }
+
+    function fleetCheckBudgets(d, add) {
+      const b = d.budgets;
+      if (b && b.on_exceed !== undefined && !["", "drain", "kill"].includes(b.on_exceed)) {
+        add("/budgets/on_exceed", "unsupported", "on_exceed must be drain or kill");
+      }
+    }
+
+    function fleetValidate(d) {
+      if (!d || typeof d !== "object") return [{ path: "/", code: "malformed", message: "spec must be an object" }];
+      const out = [], add = (path, code, message) => out.push({ path, code, message });
+      const declared = new Set(FLEET_BUILTIN_VARS);
+      fleetCheckIdentity(d, add);
+      fleetCheckWorkspace(d, add, declared);
+      fleetCheckRoster(d, add);
+      fleetCheckBudgets(d, add);
+      return out;
+    }
+
+    // The ingress the spec editor calls: lint the raw text first (a credential in
+    // an unparseable document is still a credential), then parse, then validate.
+    function fleetValidateText(text) {
+      const leaks = fleetLintSecrets(text);
+      if (leaks.length) return leaks;
+      let doc;
+      try { doc = JSON.parse(text); }
+      catch (e) { return [{ path: "/", code: "malformed", message: "not valid JSON: " + e.message }]; }
+      return fleetValidate(doc);
+    }
+    // --- fleet-validate:end ---
+
+    window.__menagerie = { FS, fleet: { validate: fleetValidate, validateText: fleetValidateText },
       // The client-side coordination API. `wait` spans relays by composing one
       // relay-local wait per session; results carry brokered:true, because a
       // brokered wait lives only as long as this page.
