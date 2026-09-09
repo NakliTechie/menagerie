@@ -722,7 +722,8 @@
     function relayKey(url) {
       try {
         const u = new URL(url);
-        const host = (u.hostname === "localhost" || u.hostname === "::1") ? "127.0.0.1" : u.hostname;
+        // URL.hostname brackets IPv6, so the literal is "[::1]" and never "::1".
+        const host = (u.hostname === "localhost" || u.hostname === "[::1]" || u.hostname === "::1") ? "127.0.0.1" : u.hostname;
         const port = u.port || (u.protocol === "wss:" ? "443" : "80");
         return u.protocol + "//" + host + ":" + port + (u.pathname === "/" ? "" : u.pathname);
       } catch { return String(url || "").replace(/\/$/, ""); }
@@ -2899,7 +2900,10 @@
 
     function fleetValidate(d) {
       if (!d || typeof d !== "object") return [{ path: "/", code: "malformed", message: "spec must be an object" }];
-      fleetNormalize(d);
+      // Normalise a COPY: the caller (the spec editor) holds this object, and
+      // silently rewriting what someone is editing is its own bug. The Go side
+      // normalises in place because there the spec IS the thing about to execute.
+      d = fleetNormalize(structuredClone(d));
       const out = [], add = (path, code, message) => out.push({ path, code, message });
       const declared = new Set(FLEET_BUILTIN_VARS), portNames = new Set();
       fleetCheckIdentity(d, add);
