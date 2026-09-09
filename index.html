@@ -722,7 +722,8 @@
     function relayKey(url) {
       try {
         const u = new URL(url);
-        const host = (u.hostname === "localhost" || u.hostname === "::1") ? "127.0.0.1" : u.hostname;
+        // URL.hostname brackets IPv6, so the literal is "[::1]" and never "::1".
+        const host = (u.hostname === "localhost" || u.hostname === "[::1]" || u.hostname === "::1") ? "127.0.0.1" : u.hostname;
         const port = u.port || (u.protocol === "wss:" ? "443" : "80");
         return u.protocol + "//" + host + ":" + port + (u.pathname === "/" ? "" : u.pathname);
       } catch { return String(url || "").replace(/\/$/, ""); }
@@ -2708,7 +2709,7 @@
       ["a GitHub token", /\bghp_[A-Za-z0-9]{20,}\b/],
       ["inline database credentials", /\b[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/\s:@"]+:[^/\s:@"]+@/],
     ];
-    const fleetStr = (v) => typeof v === "string" && v.trim() !== "";
+    const fleetStr = (v) => typeof v === "string" && v !== "";
 
     function fleetLintSecrets(text) {
       const out = [];
@@ -2739,10 +2740,10 @@
       if (!fleetStr(d.topology)) add("/topology", "required", "topology is required and has no default — name it");
     }
 
-    function fleetCheckPorts(m, add, declared) {
+    function fleetCheckPorts(m, add, declared, portNames) {
       (m.ports || []).forEach((p, i) => {
         const base = "/workspace/materialise/ports/" + i;
-        if (fleetStr(p.name)) declared.add(p.name);
+        if (fleetStr(p.name)) { declared.add(p.name); portNames.add(p.name); }
         else add(base + "/name", "required", "port entry needs a name");
         const r = p.range || [];
         if (!(r[0] > 0 && r[1] > 0 && r[0] <= r[1])) add(base + "/range", "invalid_range", "range must be [low, high] with 0 < low <= high");
@@ -2773,17 +2774,26 @@
       });
     }
 
-    function fleetCheckServices(m, add, declared) {
+    function fleetCheckServices(m, add, declared, portNames) {
       (m.services || []).forEach((s, i) => {
         const base = "/workspace/materialise/services/" + i;
         if (!fleetStr(s.name)) add(base + "/name", "required", "service entry needs a name");
         if (!fleetStr(s.run)) add(base + "/run", "required", "service entry needs a run string");
-        if (fleetStr(s.port_var) && !declared.has(s.port_var)) add(base + "/port_var", "undeclared_var", "port_var " + s.port_var + " is not a declared port");
+        // A builtin is interpolatable but is not a port: port_var must name an
+        // allocated port, or supervision has nothing real to check.
+        if (fleetStr(s.port_var) && !portNames.has(s.port_var)) add(base + "/port_var", "undeclared_var", "port_var " + s.port_var + " is not a declared port");
         // Supervision needs something concrete to check; without a port it would
         // degrade to "assume it is fine", which is what the field exists to stop.
         if (s.supervise && !fleetStr(s.port_var)) add(base + "/supervise", "requires_port_var", "supervise needs port_var: without a port there is nothing to check after the probe passes");
         for (const is of fleetVarIssues(base + "/run", s.run, declared)) add(is.path, is.code, is.message);
       });
+    }
+
+    // escape obeys the same interpolation rule as every other declared field: a
+    // ${VAR} that resolves against nothing is refused, not silently left literal.
+    function fleetCheckEscape(m, add, declared) {
+      if (!fleetStr(m.escape)) return;
+      for (const is of fleetVarIssues("/workspace/materialise/escape", m.escape, declared)) add(is.path, is.code, is.message);
     }
 
     // Hooks are a lifecycle layer beside the six stages, not a seventh stage.
@@ -2810,9 +2820,9 @@
       });
     }
 
-    function fleetCheckWorkspace(d, add, declared) {
+    function fleetCheckWorkspace(d, add, declared, portNames) {
       const ws = d.workspace || {}, m = ws.materialise || {};
-      fleetCheckPorts(m, add, declared);
+      fleetCheckPorts(m, add, declared, portNames);
       const declaredCount = (m.ports || []).length + (m.files || []).length + (m.commands || []).length;
       if (!fleetStr(ws.isolation) && declaredCount === 0 && !fleetStr(m.escape)) {
         add("/workspace", "required", "workspace is required and must declare an isolation and a materialise block");
@@ -2820,9 +2830,10 @@
       if (fleetStr(ws.isolation) && ws.isolation !== "worktree") {
         add("/workspace/isolation", "unsupported", 'only "worktree" isolation is supported');
       }
+      fleetCheckEscape(m, add, declared);
       fleetCheckFiles(m, add, declared);
       fleetCheckCommands(m, add, declared);
-      fleetCheckServices(m, add, declared);
+      fleetCheckServices(m, add, declared, portNames);
       fleetCheckHealth(m, add, declared);
       fleetCheckHooks(m, add, declared);
     }
@@ -2845,12 +2856,58 @@
       }
     }
 
+    // Mirrors relay-go/fleet/normalize.go. One place cleans a value, so the
+    // browser and the relay judge the same bytes — trimming in a validator while
+    // its consumer compares raw is how a padded "http " probe passed validation
+    // and then silently ran the wrong branch.
+    const fleetTrim = (v) => (typeof v === "string" ? v.trim() : v);
+    const fleetArr = (a) => (Array.isArray(a) ? a : []);
+    const fleetObj = (o) => (o && typeof o === "object" ? o : null);
+
+    function fleetNormalizeMaterialise(m) {
+      m.escape = fleetTrim(m.escape);
+      fleetArr(m.ports).forEach((p) => { if (fleetObj(p)) p.name = fleetTrim(p.name); });
+      fleetArr(m.files).forEach((f) => {
+        if (!fleetObj(f)) return;
+        f.from = fleetTrim(f.from); f.template = fleetTrim(f.template); f.to = fleetTrim(f.to);
+        if (Array.isArray(f.vars)) f.vars = f.vars.map(fleetTrim);
+      });
+      fleetArr(m.commands).forEach((c) => { if (fleetObj(c)) { c.run = fleetTrim(c.run); c.cache_key = fleetTrim(c.cache_key); } });
+      fleetArr(m.services).forEach((s) => { if (fleetObj(s)) { s.name = fleetTrim(s.name); s.run = fleetTrim(s.run); s.port_var = fleetTrim(s.port_var); } });
+      fleetArr(m.health).forEach((p) => { if (fleetObj(p)) { p.probe = fleetTrim(p.probe); p.url = fleetTrim(p.url); p.run = fleetTrim(p.run); } });
+      const h = fleetObj(m.hooks);
+      if (h) { h.on_start = fleetTrim(h.on_start); h.on_stop = fleetTrim(h.on_stop); h.on_destroy = fleetTrim(h.on_destroy); }
+    }
+
+    // Mirrors relay-go/fleet/normalize.go. One place cleans a value, so the
+    // browser and the relay judge the same bytes — trimming in a validator while
+    // its consumer compares raw is how a padded "http " probe passed validation
+    // and then silently ran the wrong branch.
+    function fleetNormalize(d) {
+      d.spec = fleetTrim(d.spec); d.name = fleetTrim(d.name);
+      d.repo = fleetTrim(d.repo); d.topology = fleetTrim(d.topology);
+      fleetArr(d.roster).forEach((r) => { if (fleetObj(r)) { r.role = fleetTrim(r.role); r.agent = fleetTrim(r.agent); r.model = fleetTrim(r.model); } });
+      if (fleetObj(d.budgets)) d.budgets.on_exceed = fleetTrim(d.budgets.on_exceed);
+      if (fleetObj(d.exits) && Array.isArray(d.exits.converge_on)) d.exits.converge_on = d.exits.converge_on.map(fleetTrim);
+      const w = fleetObj(d.workspace);
+      if (!w) return d;
+      w.isolation = fleetTrim(w.isolation); w.branch_prefix = fleetTrim(w.branch_prefix);
+      if (fleetObj(w.teardown) && Array.isArray(w.teardown.commands)) w.teardown.commands = w.teardown.commands.map(fleetTrim);
+      const m = fleetObj(w.materialise);
+      if (m) fleetNormalizeMaterialise(m);
+      return d;
+    }
+
     function fleetValidate(d) {
       if (!d || typeof d !== "object") return [{ path: "/", code: "malformed", message: "spec must be an object" }];
+      // Normalise a COPY: the caller (the spec editor) holds this object, and
+      // silently rewriting what someone is editing is its own bug. The Go side
+      // normalises in place because there the spec IS the thing about to execute.
+      d = fleetNormalize(structuredClone(d));
       const out = [], add = (path, code, message) => out.push({ path, code, message });
-      const declared = new Set(FLEET_BUILTIN_VARS);
+      const declared = new Set(FLEET_BUILTIN_VARS), portNames = new Set();
       fleetCheckIdentity(d, add);
-      fleetCheckWorkspace(d, add, declared);
+      fleetCheckWorkspace(d, add, declared, portNames);
       fleetCheckRoster(d, add);
       fleetCheckBudgets(d, add);
       return out;
