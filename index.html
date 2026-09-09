@@ -2708,7 +2708,7 @@
       ["a GitHub token", /\bghp_[A-Za-z0-9]{20,}\b/],
       ["inline database credentials", /\b[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/\s:@"]+:[^/\s:@"]+@/],
     ];
-    const fleetStr = (v) => typeof v === "string" && v.trim() !== "";
+    const fleetStr = (v) => typeof v === "string" && v !== "";
 
     function fleetLintSecrets(text) {
       const out = [];
@@ -2855,8 +2855,51 @@
       }
     }
 
+    // Mirrors relay-go/fleet/normalize.go. One place cleans a value, so the
+    // browser and the relay judge the same bytes — trimming in a validator while
+    // its consumer compares raw is how a padded "http " probe passed validation
+    // and then silently ran the wrong branch.
+    const fleetTrim = (v) => (typeof v === "string" ? v.trim() : v);
+    const fleetArr = (a) => (Array.isArray(a) ? a : []);
+    const fleetObj = (o) => (o && typeof o === "object" ? o : null);
+
+    function fleetNormalizeMaterialise(m) {
+      m.escape = fleetTrim(m.escape);
+      fleetArr(m.ports).forEach((p) => { if (fleetObj(p)) p.name = fleetTrim(p.name); });
+      fleetArr(m.files).forEach((f) => {
+        if (!fleetObj(f)) return;
+        f.from = fleetTrim(f.from); f.template = fleetTrim(f.template); f.to = fleetTrim(f.to);
+        if (Array.isArray(f.vars)) f.vars = f.vars.map(fleetTrim);
+      });
+      fleetArr(m.commands).forEach((c) => { if (fleetObj(c)) { c.run = fleetTrim(c.run); c.cache_key = fleetTrim(c.cache_key); } });
+      fleetArr(m.services).forEach((s) => { if (fleetObj(s)) { s.name = fleetTrim(s.name); s.run = fleetTrim(s.run); s.port_var = fleetTrim(s.port_var); } });
+      fleetArr(m.health).forEach((p) => { if (fleetObj(p)) { p.probe = fleetTrim(p.probe); p.url = fleetTrim(p.url); p.run = fleetTrim(p.run); } });
+      const h = fleetObj(m.hooks);
+      if (h) { h.on_start = fleetTrim(h.on_start); h.on_stop = fleetTrim(h.on_stop); h.on_destroy = fleetTrim(h.on_destroy); }
+    }
+
+    // Mirrors relay-go/fleet/normalize.go. One place cleans a value, so the
+    // browser and the relay judge the same bytes — trimming in a validator while
+    // its consumer compares raw is how a padded "http " probe passed validation
+    // and then silently ran the wrong branch.
+    function fleetNormalize(d) {
+      d.spec = fleetTrim(d.spec); d.name = fleetTrim(d.name);
+      d.repo = fleetTrim(d.repo); d.topology = fleetTrim(d.topology);
+      fleetArr(d.roster).forEach((r) => { if (fleetObj(r)) { r.role = fleetTrim(r.role); r.agent = fleetTrim(r.agent); r.model = fleetTrim(r.model); } });
+      if (fleetObj(d.budgets)) d.budgets.on_exceed = fleetTrim(d.budgets.on_exceed);
+      if (fleetObj(d.exits) && Array.isArray(d.exits.converge_on)) d.exits.converge_on = d.exits.converge_on.map(fleetTrim);
+      const w = fleetObj(d.workspace);
+      if (!w) return d;
+      w.isolation = fleetTrim(w.isolation); w.branch_prefix = fleetTrim(w.branch_prefix);
+      if (fleetObj(w.teardown) && Array.isArray(w.teardown.commands)) w.teardown.commands = w.teardown.commands.map(fleetTrim);
+      const m = fleetObj(w.materialise);
+      if (m) fleetNormalizeMaterialise(m);
+      return d;
+    }
+
     function fleetValidate(d) {
       if (!d || typeof d !== "object") return [{ path: "/", code: "malformed", message: "spec must be an object" }];
+      fleetNormalize(d);
       const out = [], add = (path, code, message) => out.push({ path, code, message });
       const declared = new Set(FLEET_BUILTIN_VARS), portNames = new Set();
       fleetCheckIdentity(d, add);
