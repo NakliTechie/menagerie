@@ -15,6 +15,11 @@ import (
 // Each pattern is deliberately shaped like the credential it catches rather than
 // like "anything long and random", so a legitimate opaque string (a cache key, a
 // hash) does not trip it.
+// reWS is the whitespace class used inside the patterns, spelled out so Go and
+// JavaScript match the same set. Go's \s is [\t\n\f\r ]; JavaScript's is all
+// 25 ECMAScript whitespace code points.
+const reWS = "\\t\\n\\v\\f\\r \\x{0085}\\x{00a0}\\x{1680}\\x{2000}-\\x{200a}\\x{2028}\\x{2029}\\x{202f}\\x{205f}\\x{3000}\\x{feff}"
+
 var secretPatterns = []struct {
 	code string
 	what string
@@ -23,10 +28,16 @@ var secretPatterns = []struct {
 	{"aws_access_key", "an AWS access key id", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)},
 	{"openai_key", "an OpenAI-style API key", regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}\b`)},
 	{"github_token", "a GitHub token", regexp.MustCompile(`\bghp_[A-Za-z0-9]{20,}\b`)},
-	// The password half deliberately allows "/" and ":": excluding them let
-	// postgres://user:pw/x@host and postgres://user:pw:x@host through, and a
-	// generated password contains punctuation more often than not.
-	{"inline_db_credentials", "inline database credentials", regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s/@"]+:[^\s@"]+@`)},
+	// The password half allows ":" (postgres://user:pw:x@host is a real DSN) but
+	// never "/": per RFC 3986 the authority ends at the first "/", so a userinfo
+	// password cannot contain one. Allowing it made host:port/path satisfy
+	// user:password and match on to any later "@", so
+	// https://api.example.com:8443/health?who=me@example.com was refused as a
+	// credential and its spec could not be launched at all.
+	//
+	// The whitespace class is spelled out rather than written \s, because Go's RE2
+	// \s is 5 code points and JavaScript's is 25 — the mirror would diverge.
+	{"inline_db_credentials", "inline database credentials", regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^` + reWS + `/@"]+:[^` + reWS + `/@"]+@`)},
 }
 
 // LintSecrets reports credential-shaped strings anywhere in the raw document.
@@ -62,30 +73,66 @@ func LintSecrets(b []byte) []Issue {
 	return out
 }
 
-// LintSecretsDecoded re-runs the patterns over the document's DECODED strings, so
-// an escaped credential is caught in the form it will actually take. Issues carry
-// "/#decoded" rather than a line number: after decoding there are no lines.
+// LintSecretsDecoded re-runs the patterns over the document's DECODED string
+// values, so an escaped credential is caught in the form it will actually take.
+// Issues carry "/#decoded" rather than a line number: after decoding there are no
+// lines.
+//
+// It walks the values rather than re-serialising them. Re-encoding made the result
+// depend on each language's escaping rules — Go writes U+2028 raw where
+// JavaScript's JSON.stringify must escape it — so the same document was judged
+// differently by the relay and the browser.
 func LintSecretsDecoded(b []byte) []Issue {
+	// UseNumber keeps numbers as text. Without it, decoding into `any` sends every
+	// number through ParseFloat, so one out-of-range literal like 1e999 errored and
+	// silently disabled the entire pass, defeating exactly the escaped credentials
+	// it exists to catch.
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
 	var generic any
-	if err := json.Unmarshal(b, &generic); err != nil {
-		return nil // unparseable: the raw pass is the only one that applies
+	if err := dec.Decode(&generic); err != nil {
+		if !json.Valid(b) {
+			return nil // unparseable: the raw pass is the only one that applies
+		}
+		// A lint that could not run is never a lint that passed.
+		return []Issue{{Path: "/#decoded", Code: "secret_lint_incomplete",
+			Message: "the document could not be decoded for the secret lint, so it was not fully checked: " + err.Error()}}
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false) // else < > & become \u escapes and hide a match
-	if err := enc.Encode(generic); err != nil {
-		return nil
-	}
+
 	var out []Issue
-	for _, p := range secretPatterns {
-		if p.re.Match(buf.Bytes()) {
-			out = append(out, Issue{
-				Path: "/#decoded",
-				Code: "secret_in_spec",
-				Message: "the document decodes to something that looks like " + p.what +
-					"; escaping it does not make it safe to commit (D4)",
-			})
+	seen := map[string]bool{}
+	walkStrings(generic, func(v string) {
+		for _, p := range secretPatterns {
+			if p.re.MatchString(v) && !seen[p.code] {
+				seen[p.code] = true
+				out = append(out, Issue{
+					Path: "/#decoded",
+					Code: "secret_in_spec",
+					Message: "the document decodes to something that looks like " + p.what +
+						"; escaping it does not make it safe to commit (D4)",
+				})
+			}
+		}
+	})
+	return out
+}
+
+// walkStrings visits every string value in a decoded JSON document, including
+// object keys — a credential is no safer for being used as a key.
+func walkStrings(v any, fn func(string)) {
+	switch t := v.(type) {
+	case string:
+		fn(t)
+	case json.Number:
+		fn(t.String())
+	case map[string]any:
+		for k, val := range t {
+			fn(k)
+			walkStrings(val, fn)
+		}
+	case []any:
+		for _, val := range t {
+			walkStrings(val, fn)
 		}
 	}
-	return out
 }

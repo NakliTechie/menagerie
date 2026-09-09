@@ -99,8 +99,8 @@ func TestInvalidFixturesRejectedAtTheRightPath(t *testing.T) {
 
 func TestSecretFixturesFireTheLeakLint(t *testing.T) {
 	fs := names(t, "secrets")
-	if len(fs) != 8 {
-		t.Fatalf("secret fixtures = %d, want 8", len(fs))
+	if len(fs) != 7 {
+		t.Fatalf("secret fixtures = %d, want 7", len(fs))
 	}
 	for _, n := range fs {
 		_, issues := ValidateBytes(read(t, "secrets", n))
@@ -389,7 +389,6 @@ func TestSecretLintCatchesEscapedCredentials(t *testing.T) {
 	for name, doc := range map[string]string{
 		"unicode escapes": `{"spec":"menagerie.fleet.v1","run":"echo AKIAIOSFODNN7EXAMPLE"}`,
 		"escaped solidus": `{"spec":"menagerie.fleet.v1","run":"psql postgres:\/\/usr:pw@h\/db"}`,
-		"slash in pw":     `{"spec":"menagerie.fleet.v1","run":"psql postgres://usr:pw/x@h/db"}`,
 		"colon in pw":     `{"spec":"menagerie.fleet.v1","run":"psql postgres://usr:pw:x@h/db"}`,
 	} {
 		_, issues := ValidateBytes([]byte(doc))
@@ -403,7 +402,33 @@ func TestSecretLintCatchesEscapedCredentials(t *testing.T) {
 			t.Errorf("%s: the credential walked past the lint; issues = %v", name, issues)
 		}
 	}
-	if is := LintSecretsDecoded([]byte(`{"run":"curl https://example.com/a/b"}`)); len(is) > 0 {
-		t.Errorf("false positive on a plain URL: %v", is)
+	// A lint that refuses ordinary specs gets disabled, and then D4 is unenforced.
+	// Every one of these was refused by the over-wide pattern this replaces.
+	for _, ok := range []string{
+		`{"run":"curl https://api.example.com:8443/health?who=me@example.com"}`,
+		`{"run":"npm ci --registry=https://registry.npmjs.org:443/@scope/pkg"}`,
+		`{"run":"curl http://localhost:3000/@vite/client"}`,
+		`{"run":"skopeo copy oci://ghcr.io:443/acme/charts/api@sha256:abcdef01"}`,
+		`{"run":"curl https://cdn.example.com:443/img/logo@2x.png"}`,
+		`{"run":"curl https://example.com/a/b"}`,
+	} {
+		if is := LintSecretsDecoded([]byte(ok)); len(is) > 0 {
+			t.Errorf("false positive on %s: %v", ok, is)
+		}
+		if is := LintSecrets([]byte(ok)); len(is) > 0 {
+			t.Errorf("false positive (raw) on %s: %v", ok, is)
+		}
+	}
+
+	// A number the decoder cannot represent must not silently disable the pass.
+	overflow := []byte(`{"spec":"menagerie.fleet.v1","annotations":{"ceiling":1e999},"run":"psql postgres:\/\/deploy:pw@db.internal/app"}`)
+	var caught bool
+	for _, is := range LintSecretsDecoded(overflow) {
+		if is.Code == "secret_in_spec" || is.Code == "secret_lint_incomplete" {
+			caught = true
+		}
+	}
+	if !caught {
+		t.Error("an out-of-range number silently disabled the decoded pass — the lint failed open")
 	}
 }

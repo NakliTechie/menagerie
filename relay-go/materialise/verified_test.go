@@ -1,9 +1,11 @@
 package materialise
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -315,5 +317,103 @@ func TestFileDestinationIsInterpolated(t *testing.T) {
 			got = append(got, filepath.Base(p))
 		}
 		t.Errorf("wrote %v, want a file named %q — the destination was written literally", got, want)
+	}
+}
+
+// A lexical bound is not a containment check. A symlink committed inside the repo,
+// or dropped beside it, pointed anywhere on the box and the copy read straight
+// through it — an SSH key landing in the worktree an agent works in, with the spec
+// validating clean. Found by an independent verifier who reproduced it end to end.
+func TestSymlinkCannotEscapeTheSourceBound(t *testing.T) {
+	base := t.TempDir()
+	repo := filepath.Join(base, "a", "b", "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"}, {"config", "user.email", "t@e.com"},
+		{"config", "user.name", "t"}, {"commit", "-q", "--allow-empty", "-m", "root"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	secret := filepath.Join(base, "id_rsa")
+	if err := os.WriteFile(secret, []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nSTOLEN\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, link := range map[string]string{
+		"symlink inside the repo": filepath.Join(repo, "innocent.txt"),
+		"symlink beside the repo": filepath.Join(base, "a", "b", ".env.local"),
+	} {
+		if err := os.Symlink(secret, link); err != nil {
+			t.Skipf("cannot create a symlink: %v", err)
+		}
+		from := "innocent.txt"
+		if name == "symlink beside the repo" {
+			from = "../.env.local"
+		}
+		e := New(workspace.New(t.TempDir()))
+		e.Exec, e.Prob = &RecordingExecutor{Fail: map[string]bool{}}, PassProber{}
+		spec := &fleet.Spec{
+			Spec: fleet.SpecVersion, Name: "t", Repo: ".", Topology: "flat",
+			Workspace: fleet.Workspace{Isolation: "worktree", Materialise: fleet.Materialise{
+				Files: []fleet.File{{From: from, To: "notes.txt"}}}},
+			Roster: []fleet.Role{{Role: "worker", Agent: "codex", Count: 1}},
+		}
+		res, err := e.Run(spec, repo, "w-"+strings.ReplaceAll(name, " ", "-"))
+		if err == nil {
+			leaked, _ := os.ReadFile(filepath.Join(res.Workspace.Path, "notes.txt"))
+			t.Errorf("%s: accepted, and the worktree now holds %q", name, string(leaked))
+		}
+		_ = os.Remove(link)
+	}
+}
+
+// The legacy shape: a record written before reason_code existed carries only the
+// prose. Without a fallback, upgrading the relay left every already-unhealthy
+// workspace unrecoverable except by a full re-materialise.
+func TestSupervisionClearsALegacyRecordWithNoReasonCode(t *testing.T) {
+	repo, home := testRepo(t), t.TempDir()
+	e := New(workspace.New(home))
+	e.Exec, e.Dial, e.Settle = &RecordingExecutor{Fail: map[string]bool{}}, TCPDial, -1
+	spec := supervisedSpec()
+	spec.Workspace.Materialise.Ports[0].Range = [2]int{6010, 6019}
+
+	first, err := e.Run(spec, repo, "w1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rewrite the record the way relay <= 0.6.0 wrote it: prose, no code.
+	path := filepath.Join(home, "workspaces.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	ws := doc["workspaces"].(map[string]any)["w1"].(map[string]any)
+	delete(ws, "reason_code")
+	out, _ := json.Marshal(doc)
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", first.Workspace.Ports["DB_PORT"]))
+	if err != nil {
+		t.Skipf("could not bind: %v", err)
+	}
+	defer ln.Close()
+	state, err := e.Supervise(spec, "w1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != workspace.StateReady {
+		t.Errorf("Supervise returned %q on a pre-upgrade record; it must recognise the legacy prose", state)
 	}
 }

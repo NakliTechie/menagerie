@@ -249,10 +249,35 @@ func (e *Engine) materialiseFile(f fleet.File, rec *workspace.Record, repoRoot s
 	resolved := filepath.Join(repoRoot, src)
 	// Enforced here as well as in the validator, because this is the code that
 	// actually opens the file and it must not depend on having been validated.
-	if !within(filepath.Dir(repoRoot), resolved) {
-		return Step{}, fmt.Errorf("source %q resolves outside the repo's parent directory", src)
+	//
+	// Symlinks are resolved on BOTH sides before comparing. A lexical check is not
+	// a containment check: a symlink committed inside the repo, or dropped beside
+	// it, pointed anywhere on the box and the copy read straight through it — an
+	// SSH key landing in the worktree an agent works in, with the spec validating
+	// clean. A path that cannot be resolved is refused rather than assumed safe.
+	bound, err := filepath.EvalSymlinks(filepath.Dir(filepath.Clean(repoRoot)))
+	if err != nil {
+		bound = filepath.Dir(filepath.Clean(repoRoot))
 	}
-	src = resolved
+	real, err := filepath.EvalSymlinks(resolved)
+	switch {
+	case err == nil:
+		if !within(bound, real) {
+			return Step{}, fmt.Errorf("source %q resolves to %q, outside the repo's parent directory", src, real)
+		}
+		src = real
+	case os.IsNotExist(err):
+		// Nothing there to follow, so the lexical bound is the whole story and the
+		// read below fails on its own. A dangling symlink lands here too, and
+		// following it still fails.
+		if !within(filepath.Dir(filepath.Clean(repoRoot)), resolved) {
+			return Step{}, fmt.Errorf("source %q resolves outside the repo's parent directory", src)
+		}
+		src = resolved
+	default:
+		// It exists but will not resolve — refuse rather than assume it is safe.
+		return Step{}, fmt.Errorf("cannot resolve source %q: %w", src, err)
+	}
 	action := "copy"
 	if f.Template != "" {
 		action = "render"
@@ -558,7 +583,16 @@ func (e *Engine) Supervise(spec *fleet.Spec, name string) (string, error) {
 	// nothing about whether that condition cleared.
 	// Branch on the code, never on the prose: supervision clears only the verdict
 	// it set, and a reworded message cannot change that.
-	if rec.State == workspace.StateUnhealthy && rec.ReasonCode == ReasonSupervise {
+	//
+	// A record written before reason_code existed carries only the prose, so read
+	// it once here as a legacy fallback. Without this, upgrading the relay left
+	// every already-unhealthy workspace unrecoverable except by a full
+	// re-materialise.
+	code := rec.ReasonCode
+	if code == "" && strings.HasPrefix(rec.Reason, supervisionReason) {
+		code = ReasonSupervise
+	}
+	if rec.State == workspace.StateUnhealthy && code == ReasonSupervise {
 		if err := e.Prov.SetStateReason(name, workspace.StateReady, "", ""); err != nil {
 			return "", err
 		}

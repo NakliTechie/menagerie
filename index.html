@@ -2703,13 +2703,18 @@
     // independent anyway.
     const FLEET_SPEC_VERSION = "menagerie.fleet.v1";
     const FLEET_BUILTIN_VARS = ["WORKSPACE", "BRANCH", "REPO_ROOT"];
+    // Same class as reWS in relay-go/fleet/secrets.go — \s means different things
+    // in the two engines, so it is never used inside these patterns.
+    const FLEET_RE_WS = "\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff";
     const FLEET_SECRET_PATTERNS = [
       ["an AWS access key id", /\bAKIA[0-9A-Z]{16}\b/],
       ["an OpenAI-style API key", /\bsk-[A-Za-z0-9_-]{16,}\b/],
       ["a GitHub token", /\bghp_[A-Za-z0-9]{20,}\b/],
-      // The password half allows "/" and ":" — excluding them let
-      // postgres://user:pw/x@host through, and generated passwords carry punctuation.
-      ["inline database credentials", /\b[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s/@"]+:[^\s@"]+@/],
+      // The password half allows ":" but never "/": per RFC 3986 the authority
+      // ends at the first "/", and allowing it made host:port/path satisfy
+      // user:password, so ordinary URLs were refused as credentials.
+      ["inline database credentials",
+        new RegExp("\\b[a-zA-Z][a-zA-Z0-9+.-]*://[^" + FLEET_RE_WS + "/@\"]+:[^" + FLEET_RE_WS + "/@\"]+@")],
     ];
     const fleetStr = (v) => typeof v === "string" && v !== "";
 
@@ -2811,10 +2816,18 @@
     // Mirrors escapesRepoParent in relay-go/fleet/validate.go: one ".." is the
     // documented "beside the repo" case, two or more reaches off the box.
     function fleetEscapesRepoParent(rel) {
-      let depth = 0;
+      // Clean first, the way Go's filepath.Clean does, so both sides count NET
+      // depth. Counting peak depth on the raw string refused cfg/../../shared/.env,
+      // which cleans to ../shared/.env and is inside the bound.
+      const out = [];
       for (const seg of rel.split("/")) {
+        if (seg === "." || seg === "") continue;
+        if (seg === ".." && out.length && out[out.length - 1] !== "..") out.pop();
+        else out.push(seg);
+      }
+      let depth = 0;
+      for (const seg of out) {
         if (seg === "..") { depth++; if (depth > 1) return true; }
-        else if (seg !== "." && seg !== "") { depth = Math.max(0, depth - 1); }
       }
       return false;
     }
@@ -2951,6 +2964,18 @@
 
     // The ingress the spec editor calls: lint the raw text first (a credential in
     // an unparseable document is still a credential), then parse, then validate.
+    // Visits every string in a decoded document, including object keys — a
+    // credential is no safer for being used as a key. Mirrors walkStrings in
+    // relay-go/fleet/secrets.go.
+    function fleetWalkStrings(v, fn) {
+      if (typeof v === "string") { fn(v); return; }
+      if (typeof v === "number" || typeof v === "boolean") { fn(String(v)); return; }
+      if (Array.isArray(v)) { v.forEach((x) => fleetWalkStrings(x, fn)); return; }
+      if (v && typeof v === "object") {
+        for (const [k, val] of Object.entries(v)) { fn(k); fleetWalkStrings(val, fn); }
+      }
+    }
+
     function fleetValidateText(text) {
       const leaks = fleetLintSecrets(text);
       let doc;
@@ -2959,13 +2984,20 @@
       // Re-check the DECODED document: a run string written with \u escapes, or
       // the escaped solidus many serialisers emit, sails past a byte-level match
       // while decoding to exactly the credential the pattern describes.
-      const decoded = JSON.stringify(doc);
-      for (const [what, re] of FLEET_SECRET_PATTERNS) {
-        if (re.test(decoded)) {
-          leaks.push({ path: "/#decoded", code: "secret_in_spec",
-            message: "the document decodes to something that looks like " + what + "; escaping it does not make it safe to commit (D4)" });
+      //
+      // Walk the VALUES rather than re-serialising: JSON.stringify must escape
+      // U+2028 to stay valid JS while Go writes it raw, so re-encoding made the
+      // two ingresses judge the same document differently.
+      const seen = new Set();
+      fleetWalkStrings(doc, (v) => {
+        for (const [what, re] of FLEET_SECRET_PATTERNS) {
+          if (re.test(v) && !seen.has(what)) {
+            seen.add(what);
+            leaks.push({ path: "/#decoded", code: "secret_in_spec",
+              message: "the document decodes to something that looks like " + what + "; escaping it does not make it safe to commit (D4)" });
+          }
         }
-      }
+      });
       if (leaks.length) return leaks;
       return fleetValidate(doc);
     }
