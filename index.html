@@ -2739,10 +2739,10 @@
       if (!fleetStr(d.topology)) add("/topology", "required", "topology is required and has no default — name it");
     }
 
-    function fleetCheckPorts(m, add, declared) {
+    function fleetCheckPorts(m, add, declared, portNames) {
       (m.ports || []).forEach((p, i) => {
         const base = "/workspace/materialise/ports/" + i;
-        if (fleetStr(p.name)) declared.add(p.name);
+        if (fleetStr(p.name)) { declared.add(p.name); portNames.add(p.name); }
         else add(base + "/name", "required", "port entry needs a name");
         const r = p.range || [];
         if (!(r[0] > 0 && r[1] > 0 && r[0] <= r[1])) add(base + "/range", "invalid_range", "range must be [low, high] with 0 < low <= high");
@@ -2773,17 +2773,26 @@
       });
     }
 
-    function fleetCheckServices(m, add, declared) {
+    function fleetCheckServices(m, add, declared, portNames) {
       (m.services || []).forEach((s, i) => {
         const base = "/workspace/materialise/services/" + i;
         if (!fleetStr(s.name)) add(base + "/name", "required", "service entry needs a name");
         if (!fleetStr(s.run)) add(base + "/run", "required", "service entry needs a run string");
-        if (fleetStr(s.port_var) && !declared.has(s.port_var)) add(base + "/port_var", "undeclared_var", "port_var " + s.port_var + " is not a declared port");
+        // A builtin is interpolatable but is not a port: port_var must name an
+        // allocated port, or supervision has nothing real to check.
+        if (fleetStr(s.port_var) && !portNames.has(s.port_var)) add(base + "/port_var", "undeclared_var", "port_var " + s.port_var + " is not a declared port");
         // Supervision needs something concrete to check; without a port it would
         // degrade to "assume it is fine", which is what the field exists to stop.
         if (s.supervise && !fleetStr(s.port_var)) add(base + "/supervise", "requires_port_var", "supervise needs port_var: without a port there is nothing to check after the probe passes");
         for (const is of fleetVarIssues(base + "/run", s.run, declared)) add(is.path, is.code, is.message);
       });
+    }
+
+    // escape obeys the same interpolation rule as every other declared field: a
+    // ${VAR} that resolves against nothing is refused, not silently left literal.
+    function fleetCheckEscape(m, add, declared) {
+      if (!fleetStr(m.escape)) return;
+      for (const is of fleetVarIssues("/workspace/materialise/escape", m.escape, declared)) add(is.path, is.code, is.message);
     }
 
     // Hooks are a lifecycle layer beside the six stages, not a seventh stage.
@@ -2810,9 +2819,9 @@
       });
     }
 
-    function fleetCheckWorkspace(d, add, declared) {
+    function fleetCheckWorkspace(d, add, declared, portNames) {
       const ws = d.workspace || {}, m = ws.materialise || {};
-      fleetCheckPorts(m, add, declared);
+      fleetCheckPorts(m, add, declared, portNames);
       const declaredCount = (m.ports || []).length + (m.files || []).length + (m.commands || []).length;
       if (!fleetStr(ws.isolation) && declaredCount === 0 && !fleetStr(m.escape)) {
         add("/workspace", "required", "workspace is required and must declare an isolation and a materialise block");
@@ -2820,9 +2829,10 @@
       if (fleetStr(ws.isolation) && ws.isolation !== "worktree") {
         add("/workspace/isolation", "unsupported", 'only "worktree" isolation is supported');
       }
+      fleetCheckEscape(m, add, declared);
       fleetCheckFiles(m, add, declared);
       fleetCheckCommands(m, add, declared);
-      fleetCheckServices(m, add, declared);
+      fleetCheckServices(m, add, declared, portNames);
       fleetCheckHealth(m, add, declared);
       fleetCheckHooks(m, add, declared);
     }
@@ -2848,9 +2858,9 @@
     function fleetValidate(d) {
       if (!d || typeof d !== "object") return [{ path: "/", code: "malformed", message: "spec must be an object" }];
       const out = [], add = (path, code, message) => out.push({ path, code, message });
-      const declared = new Set(FLEET_BUILTIN_VARS);
+      const declared = new Set(FLEET_BUILTIN_VARS), portNames = new Set();
       fleetCheckIdentity(d, add);
-      fleetCheckWorkspace(d, add, declared);
+      fleetCheckWorkspace(d, add, declared, portNames);
       fleetCheckRoster(d, add);
       fleetCheckBudgets(d, add);
       return out;
