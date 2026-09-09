@@ -715,13 +715,48 @@
     }
 
     // ===== relay connection ===========================================
+    // Two spellings of the same relay are the same relay: ws://127.0.0.1:7878,
+    // ws://127.0.0.1:7878/ and ws://localhost:7878 all reach one process. Compared
+    // on the normalized form so adding "the same" relay by hand adopts the row
+    // that already exists instead of making a second one.
+    function relayKey(url) {
+      try {
+        const u = new URL(url);
+        const host = (u.hostname === "localhost" || u.hostname === "::1") ? "127.0.0.1" : u.hostname;
+        const port = u.port || (u.protocol === "wss:" ? "443" : "80");
+        return u.protocol + "//" + host + ":" + port + (u.pathname === "/" ? "" : u.pathname);
+      } catch { return String(url || "").replace(/\/$/, ""); }
+    }
+    function findRelayByUrl(url) {
+      const key = relayKey(url);
+      return relays.find((r) => relayKey(r.url) === key) || null;
+    }
+    // Adding a relay whose URL is already listed adopts the token into that row
+    // rather than creating a duplicate. The built-in localhost row is always
+    // offered, so without this, pasting the token for 127.0.0.1:7878 left two rows
+    // for one relay — one `needs_token`, one connected — and a lookup by URL could
+    // pick the wrong one (found 2026-09-07, cost real time in testing).
     function addRelay(url, token, name) {
+      const existing = findRelayByUrl(url);
+      if (existing) {
+        if (token) existing.token = token;
+        if (name && existing.name === existing.url) existing.name = name;
+        existing.error = null;
+        if (existing.ws && existing.ws.readyState === WebSocket.OPEN && token) {
+          existing.status = "connecting";
+          send(existing, { type: "register", registration_token: token });
+        } else {
+          connect(existing);
+        }
+        persistRelays(); renderAll();
+        return existing;
+      }
       const relay = { id: crypto.randomUUID(), url, token, ws: null, status: "connecting", name: name || url, hello: null, error: null };
       relays.push(relay); connect(relay); persistRelays(); renderAll(); return relay;
     }
     // The local relay is always offered, even on a blank workspace (the common single-machine case).
     // It connects to read `hello`, then waits for its registration token (entered in Settings).
-    function ensureLocalhostRelay() { if (!relays.some((r) => r.url === DEFAULT_LOCAL_URL)) addRelay(DEFAULT_LOCAL_URL, null, "localhost"); }
+    function ensureLocalhostRelay() { if (!findRelayByUrl(DEFAULT_LOCAL_URL)) addRelay(DEFAULT_LOCAL_URL, null, "localhost"); }
     const BACKOFF = [1000, 2000, 4000, 8000, 30000];
     function connect(relay) {
       // Each attempt gets a generation; listeners from a superseded socket bail out,
@@ -1828,7 +1863,13 @@
         const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
         const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.name;
         const mt = document.createElement("span"); mt.className = "mt";
-        mt.textContent = r.status === "needs_token" ? "token" : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
+        // A relay in error has usually completed `hello` (the token was rejected
+        // after the handshake), so preferring host/arch whenever hello exists made
+        // a refused relay read as a healthy `darwin/arm64`. State wins over
+        // hardware: the row has to say something the user can act on.
+        mt.textContent = r.status === "needs_token" ? "token"
+          : r.status === "error" ? (r.error ? "error: " + r.error : "error")
+          : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
         row.append(dot, nm, mt);
         row.addEventListener("click", () => openModal("settingsScrim"));
         rel.appendChild(row);
