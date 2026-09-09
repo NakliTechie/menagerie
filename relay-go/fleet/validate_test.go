@@ -29,6 +29,9 @@ var invalidWantPath = map[string]string{
 	"hook-undeclared-var.json":            "/workspace/materialise/hooks/on_start",
 	"supervise-with-blank-port-var.json":  "/workspace/materialise/services/0/supervise",
 	"padded-unknown-probe.json":           "/workspace/materialise/health/0/probe",
+	"absolute-source.json":                "/workspace/materialise/files/0/from",
+	"source-out-of-bounds.json":           "/workspace/materialise/files/0/from",
+	"tilde-source.json":                   "/workspace/materialise/files/1/template",
 }
 
 func read(t *testing.T, dir, name string) []byte {
@@ -69,8 +72,8 @@ func TestValidFixturesPass(t *testing.T) {
 
 func TestInvalidFixturesRejectedAtTheRightPath(t *testing.T) {
 	fs := names(t, "invalid")
-	if len(fs) != 16 {
-		t.Fatalf("invalid fixtures = %d, want 16", len(fs))
+	if len(fs) != 19 {
+		t.Fatalf("invalid fixtures = %d, want 19", len(fs))
 	}
 	for _, n := range fs {
 		want, ok := invalidWantPath[n]
@@ -96,8 +99,8 @@ func TestInvalidFixturesRejectedAtTheRightPath(t *testing.T) {
 
 func TestSecretFixturesFireTheLeakLint(t *testing.T) {
 	fs := names(t, "secrets")
-	if len(fs) != 5 {
-		t.Fatalf("secret fixtures = %d, want 5", len(fs))
+	if len(fs) != 8 {
+		t.Fatalf("secret fixtures = %d, want 8", len(fs))
 	}
 	for _, n := range fs {
 		_, issues := ValidateBytes(read(t, "secrets", n))
@@ -251,8 +254,8 @@ func TestSecretLintSurvivesAnEnormousLine(t *testing.T) {
 // published schema.json as written", and JSON Schema cannot trim.
 func TestNormalisingFixturesBecomeValid(t *testing.T) {
 	fs := names(t, "normalises")
-	if len(fs) != 3 {
-		t.Fatalf("normalising fixtures = %d, want 3", len(fs))
+	if len(fs) != 5 {
+		t.Fatalf("normalising fixtures = %d, want 5", len(fs))
 	}
 	for _, n := range fs {
 		if _, issues := ValidateBytes(read(t, "normalises", n)); len(issues) > 0 {
@@ -329,4 +332,78 @@ func findUntrimmed(v reflect.Value, path string) []string {
 		}
 	}
 	return out
+}
+
+// The two ingresses must trim the same code points. Go's unicode.IsSpace trims
+// U+0085 and not U+FEFF; JavaScript's String.trim does the opposite. Left to
+// defaults, the relay and the browser judged the same document differently.
+func TestWhitespaceSetCoversBothLanguagesDefaults(t *testing.T) {
+	for _, r := range []string{"\u0085", "\ufeff", "\u00a0", "\u2003", "\u3000"} {
+		s := &Spec{
+			Spec: SpecVersion, Name: r + "x" + r, Repo: ".", Topology: "flat",
+			Workspace: Workspace{Isolation: "worktree", Materialise: Materialise{
+				Commands: []Command{{Run: "setup"}}}},
+			Roster: []Role{{Role: "worker", Agent: "codex", Count: 1}},
+		}
+		if issues := Validate(s); len(issues) > 0 {
+			t.Errorf("a name padded with %q was rejected: %v", r, issues)
+		}
+		if s.Name != "x" {
+			t.Errorf("name padded with %q normalised to %q, want %q", r, s.Name, "x")
+		}
+	}
+}
+
+// The source bound: "beside the repo" is the documented pattern and must work;
+// anything further out is refused. The destination rule cannot simply be reused,
+// because the handoff's own example reads ../.env.local.
+func TestFileSourceBounds(t *testing.T) {
+	mk := func(from string) *Spec {
+		return &Spec{
+			Spec: SpecVersion, Name: "x", Repo: ".", Topology: "flat",
+			Workspace: Workspace{Isolation: "worktree", Materialise: Materialise{
+				Files: []File{{From: from, To: ".env"}}}},
+			Roster: []Role{{Role: "worker", Agent: "codex", Count: 1}},
+		}
+	}
+	for _, ok := range []string{".env.local", "config/.env", "../.env.local", "../shared/x.env"} {
+		if issues := Validate(mk(ok)); len(issues) > 0 {
+			t.Errorf("source %q should be allowed: %v", ok, issues)
+		}
+	}
+	for _, bad := range []string{"/etc/passwd", "~/.aws/credentials", "../../x", "../../../../etc/passwd"} {
+		var flagged bool
+		for _, is := range Validate(mk(bad)) {
+			if is.Code == "absolute_source" || is.Code == "source_out_of_bounds" {
+				flagged = true
+			}
+		}
+		if !flagged {
+			t.Errorf("source %q was accepted - a spec could read it off the relay's box", bad)
+		}
+	}
+}
+
+// JSON escapes defeat a byte-level match, so the lint also checks the decoded form.
+func TestSecretLintCatchesEscapedCredentials(t *testing.T) {
+	for name, doc := range map[string]string{
+		"unicode escapes": `{"spec":"menagerie.fleet.v1","run":"echo AKIAIOSFODNN7EXAMPLE"}`,
+		"escaped solidus": `{"spec":"menagerie.fleet.v1","run":"psql postgres:\/\/usr:pw@h\/db"}`,
+		"slash in pw":     `{"spec":"menagerie.fleet.v1","run":"psql postgres://usr:pw/x@h/db"}`,
+		"colon in pw":     `{"spec":"menagerie.fleet.v1","run":"psql postgres://usr:pw:x@h/db"}`,
+	} {
+		_, issues := ValidateBytes([]byte(doc))
+		var leaked bool
+		for _, is := range issues {
+			if is.Code == "secret_in_spec" {
+				leaked = true
+			}
+		}
+		if !leaked {
+			t.Errorf("%s: the credential walked past the lint; issues = %v", name, issues)
+		}
+	}
+	if is := LintSecretsDecoded([]byte(`{"run":"curl https://example.com/a/b"}`)); len(is) > 0 {
+		t.Errorf("false positive on a plain URL: %v", is)
+	}
 }

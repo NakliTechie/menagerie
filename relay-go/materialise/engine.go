@@ -76,7 +76,7 @@ func (e *Engine) Run(spec *fleet.Spec, repoRoot, name string) (*Result, error) {
 		// pointer led nowhere.
 		log.Printf("materialise %s: %s failed: %v", name, where, err)
 		if !e.DryRun {
-			_ = e.Prov.SetStateReason(name, workspace.StateUnhealthy, where+" failed; see the relay log")
+			_ = e.Prov.SetStateReason(name, workspace.StateUnhealthy, where+" failed; see the relay log", ReasonStage)
 			if fresh, lerr := e.Prov.Load(name); lerr == nil && fresh != nil {
 				res.Workspace = fresh // the failure path returned a pre-run snapshot too
 			}
@@ -138,11 +138,14 @@ func (e *Engine) Run(spec *fleet.Spec, repoRoot, name string) (*Result, error) {
 	}
 
 	// --- 5. health: probes gate completion; a failure is unhealthy, not ready ---
-	for _, p := range m.Health {
+	for i, p := range m.Health {
 		step, ok := e.probe(p, rec)
 		res.Steps = append(res.Steps, step)
 		if !ok {
-			res.Failed = append(res.Failed, step.Detail)
+			// A locator, never step.Detail: a probe URL can carry credentials
+			// (http://svc:pw@host/health) and this string is persisted to disk.
+			log.Printf("materialise %s: health[%d] (%s) failed: %s", name, i, p.Probe, step.Reason)
+			res.Failed = append(res.Failed, fmt.Sprintf("health[%d] (%s) failed; see the relay log", i, p.Probe))
 		}
 	}
 
@@ -193,7 +196,8 @@ func (e *Engine) Run(spec *fleet.Spec, repoRoot, name string) (*Result, error) {
 				// A failed start hook is a failed materialisation, reported the same
 				// way a failed probe is.
 				step.Reason = err.Error()
-				res.Failed = append(res.Failed, "hooks.on_start: "+err.Error())
+				log.Printf("materialise %s: hooks.on_start failed: %v", name, err)
+				res.Failed = append(res.Failed, "hooks.on_start failed; see the relay log")
 			} else if !e.DryRun {
 				// Stamped only on success, so a hook that failed is retried next pass.
 				_ = e.Prov.MarkStarted(name)
@@ -203,13 +207,17 @@ func (e *Engine) Run(spec *fleet.Spec, repoRoot, name string) (*Result, error) {
 	}
 
 	res.State = workspace.StateReady
-	reason := ""
+	reason, code := "", ""
 	if len(res.Failed) > 0 {
 		res.State = workspace.StateUnhealthy
 		reason = res.Failed[0]
+		code = ReasonProbe
+		if strings.HasPrefix(reason, supervisionReason) {
+			code = ReasonSupervise
+		}
 	}
 	if !e.DryRun {
-		_ = e.Prov.SetStateReason(name, res.State, reason)
+		_ = e.Prov.SetStateReason(name, res.State, reason, code)
 		// Re-read: `rec` is a pre-run snapshot, so without this the result reports
 		// the state the workspace was in BEFORE the run — a just-materialised
 		// workspace would go over the wire as `provisioning`.
@@ -224,25 +232,37 @@ func (e *Engine) Run(spec *fleet.Spec, repoRoot, name string) (*Result, error) {
 // the workspace root — the validator rejects the obvious spellings, and this is
 // the enforcement that does not depend on having been validated.
 func (e *Engine) materialiseFile(f fleet.File, rec *workspace.Record, repoRoot string) (Step, error) {
-	dest := filepath.Join(rec.Path, f.To)
+	// The destination is interpolated: the validator checks its ${VAR}s resolve, so
+	// writing it literally made a promise the engine did not keep.
+	to := interpolate(f.To, rec.Vars)
+	dest := filepath.Join(rec.Path, to)
 	if !within(rec.Path, dest) {
-		return Step{}, fmt.Errorf("destination %q escapes the workspace root", f.To)
+		return Step{}, fmt.Errorf("destination %q escapes the workspace root", to)
 	}
 	src := f.From
 	if src == "" {
 		src = f.Template
 	}
-	if !filepath.IsAbs(src) {
-		src = filepath.Join(repoRoot, src)
+	if filepath.IsAbs(src) {
+		return Step{}, fmt.Errorf("source %q must be relative to the repo", src)
 	}
+	resolved := filepath.Join(repoRoot, src)
+	// Enforced here as well as in the validator, because this is the code that
+	// actually opens the file and it must not depend on having been validated.
+	if !within(filepath.Dir(repoRoot), resolved) {
+		return Step{}, fmt.Errorf("source %q resolves outside the repo's parent directory", src)
+	}
+	src = resolved
 	action := "copy"
 	if f.Template != "" {
 		action = "render"
 	}
 	// A dry run reports what it would do without reading the repo or writing the
 	// workspace: the plan is about the graph, not about the box's current files.
+	// The SOURCE is in the detail as well as the destination — a reviewer reading a
+	// plan before launching it has to be able to see where a file comes from.
 	if e.DryRun {
-		return Step{Stage: "files", Action: action, Detail: f.To, Skipped: true, Reason: "dry run"}, nil
+		return Step{Stage: "files", Action: action, Detail: f.SourceLabel() + " -> " + to, Skipped: true, Reason: "dry run"}, nil
 	}
 	b, err := e.FS.ReadFile(src)
 	if err != nil {
@@ -254,7 +274,7 @@ func (e *Engine) materialiseFile(f fleet.File, rec *workspace.Record, repoRoot s
 	if err := e.FS.WriteFile(dest, b, 0o600); err != nil {
 		return Step{}, err
 	}
-	return Step{Stage: "files", Action: action, Detail: f.To}, nil
+	return Step{Stage: "files", Action: action, Detail: f.SourceLabel() + " -> " + to}, nil
 }
 
 // runCommand honours cache_key: the command is skipped when the named file's
@@ -527,8 +547,7 @@ func (e *Engine) Supervise(spec *fleet.Spec, name string) (string, error) {
 			continue
 		}
 		if _, ok := e.superviseService(sv, rec, 0); !ok {
-			reason := supervisionReason + sv.Name
-			if err := e.Prov.SetStateReason(name, workspace.StateUnhealthy, reason); err != nil {
+			if err := e.Prov.SetStateReason(name, workspace.StateUnhealthy, supervisionReason+sv.Name, ReasonSupervise); err != nil {
 				return "", err
 			}
 			return workspace.StateUnhealthy, nil
@@ -537,8 +556,10 @@ func (e *Engine) Supervise(spec *fleet.Spec, name string) (string, error) {
 	// Everything supervised is answering. Clear an unhealthy that supervision
 	// itself set; leave one a failed health probe set, because this check knows
 	// nothing about whether that condition cleared.
-	if rec.State == workspace.StateUnhealthy && strings.HasPrefix(rec.Reason, supervisionReason) {
-		if err := e.Prov.SetStateReason(name, workspace.StateReady, ""); err != nil {
+	// Branch on the code, never on the prose: supervision clears only the verdict
+	// it set, and a reworded message cannot change that.
+	if rec.State == workspace.StateUnhealthy && rec.ReasonCode == ReasonSupervise {
+		if err := e.Prov.SetStateReason(name, workspace.StateReady, "", ""); err != nil {
 			return "", err
 		}
 		return workspace.StateReady, nil
@@ -561,6 +582,13 @@ func (e *Engine) settle() time.Duration {
 	return serviceSettle
 }
 
-// supervisionReason prefixes the reason supervision writes, so Supervise can
-// recognise its own verdict and clear only that.
+// supervisionReason is the operator-facing wording; ReasonSupervise is what code
+// branches on.
 const supervisionReason = "supervise: service not answering: "
+
+// Reason codes recorded alongside an unhealthy state. Only these are branched on.
+const (
+	ReasonStage     = "stage"     // a declared stage failed
+	ReasonProbe     = "probe"     // a health probe failed
+	ReasonSupervise = "supervise" // a supervised service stopped answering
+)

@@ -25,6 +25,11 @@ type Record struct {
 	// what lets supervision clear an unhealthy it caused without clearing one a
 	// failed health probe caused.
 	Reason string `json:"reason,omitempty"`
+	// ReasonCode is the machine-readable half, and the ONLY thing code branches
+	// on. Recognising supervision's own verdict by matching a prose prefix meant a
+	// reworded message — or a service renamed in the spec — silently changed
+	// behaviour.
+	ReasonCode string `json:"reason_code,omitempty"`
 	// StartedAt is stamped the first time hooks.on_start ran successfully. The
 	// hook is gated on this rather than on the workspace's state, because
 	// supervision can promote a workspace to ready without ever starting it —

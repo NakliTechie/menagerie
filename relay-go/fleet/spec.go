@@ -153,3 +153,12 @@ type Exits struct {
 // ports. Nothing else: no environment inheritance, no arbitrary shell expansion
 // in declared fields.
 var BuiltinVars = []string{"WORKSPACE", "BRANCH", "REPO_ROOT"}
+
+// SourceLabel names a file entry's source for a plan or a log line, so a reviewer
+// can see WHERE a file comes from and not only where it lands.
+func (f File) SourceLabel() string {
+	if f.Template != "" {
+		return f.Template
+	}
+	return f.From
+}

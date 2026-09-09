@@ -189,3 +189,131 @@ type leakyExecutor struct{}
 func (leakyExecutor) Run(dir string, env []string, cmdline string, timeout time.Duration) ([]byte, error) {
 	return []byte("connecting with AKIAIOSFODNN7EXAMPLE / hunter2\n"), fmt.Errorf("exit status 1")
 }
+
+// A spec must not be able to copy an arbitrary readable file on the relay's box
+// into the worktree an agent works in. Enforced in the engine as well as the
+// validator, because this is the code that actually opens the file.
+func TestEngineRefusesASourceOutsideTheRepoParent(t *testing.T) {
+	repo := testRepo(t)
+	e := New(workspace.New(t.TempDir()))
+	e.Exec, e.Prob = &RecordingExecutor{Fail: map[string]bool{}}, PassProber{}
+	for _, src := range []string{"/etc/passwd", "../../../../etc/passwd"} {
+		spec := &fleet.Spec{
+			Spec: fleet.SpecVersion, Name: "t", Repo: ".", Topology: "flat",
+			Workspace: fleet.Workspace{Isolation: "worktree", Materialise: fleet.Materialise{
+				Files: []fleet.File{{From: src, To: "leak.txt"}}}},
+			Roster: []fleet.Role{{Role: "worker", Agent: "codex", Count: 1}},
+		}
+		if _, err := e.Run(spec, repo, "w"); err == nil {
+			t.Errorf("source %q was accepted — a spec could exfiltrate it into the agent's worktree", src)
+		}
+	}
+	// The documented pattern — a file kept beside the repo — must still work.
+	if err := os.WriteFile(filepath.Join(filepath.Dir(repo), "beside.env"), []byte("K=v\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ok := &fleet.Spec{
+		Spec: fleet.SpecVersion, Name: "t", Repo: ".", Topology: "flat",
+		Workspace: fleet.Workspace{Isolation: "worktree", Materialise: fleet.Materialise{
+			Files: []fleet.File{{From: "../beside.env", To: ".env"}}}},
+		Roster: []fleet.Role{{Role: "worker", Agent: "codex", Count: 1}},
+	}
+	if _, err := e.Run(ok, repo, "w2"); err != nil {
+		t.Errorf("../beside.env is the handoff's own documented pattern and must work: %v", err)
+	}
+}
+
+// A probe URL can carry credentials, and the reason is persisted to disk.
+func TestAFailedProbeDoesNotPersistItsTarget(t *testing.T) {
+	repo, home := testRepo(t), t.TempDir()
+	e := New(workspace.New(home))
+	e.Exec, e.Prob = &RecordingExecutor{Fail: map[string]bool{}}, FailProber{}
+	spec := &fleet.Spec{
+		Spec: fleet.SpecVersion, Name: "t", Repo: ".", Topology: "flat",
+		Workspace: fleet.Workspace{Isolation: "worktree", Materialise: fleet.Materialise{
+			Health: []fleet.Probe{{Probe: "http", URL: "http://svc:s3cr3t@internal/health", TimeoutS: 1}}}},
+		Roster: []fleet.Role{{Role: "worker", Agent: "codex", Count: 1}},
+	}
+	if _, err := e.Run(spec, repo, "w"); err != nil {
+		t.Fatal(err)
+	}
+	rec, _ := e.Prov.Load("w")
+	if strings.Contains(rec.Reason, "s3cr3t") {
+		t.Errorf("the probe's credentials were persisted in the reason: %q", rec.Reason)
+	}
+	raw, _ := os.ReadFile(filepath.Join(home, "workspaces.json"))
+	if strings.Contains(string(raw), "s3cr3t") {
+		t.Error("the probe's credentials reached workspaces.json on disk")
+	}
+	if rec.ReasonCode != ReasonProbe {
+		t.Errorf("reason_code = %q, want %q", rec.ReasonCode, ReasonProbe)
+	}
+}
+
+// Supervision clears only the verdict it set, and that decision must not depend on
+// matching prose — a reworded message or a renamed service used to change it.
+func TestSupervisionClearsByCodeNotByProse(t *testing.T) {
+	repo, home := testRepo(t), t.TempDir()
+	e := New(workspace.New(home))
+	e.Exec, e.Dial, e.Settle = &RecordingExecutor{Fail: map[string]bool{}}, TCPDial, -1
+	spec := supervisedSpec()
+	spec.Workspace.Materialise.Ports[0].Range = [2]int{5990, 5999}
+
+	first, err := e.Run(spec, repo, "w1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, _ := e.Prov.Load("w1")
+	if rec.ReasonCode != ReasonSupervise {
+		t.Fatalf("reason_code = %q, want %q", rec.ReasonCode, ReasonSupervise)
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", first.Workspace.Ports["DB_PORT"]))
+	if err != nil {
+		t.Skipf("could not bind: %v", err)
+	}
+	defer ln.Close()
+
+	// Rename the service: the prose changes, the code does not.
+	spec.Workspace.Materialise.Services[0].Name = "renamed-db"
+	state, err := e.Supervise(spec, "w1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != workspace.StateReady {
+		t.Errorf("Supervise returned %q after a rename; the verdict is recognised by code, not wording", state)
+	}
+}
+
+// The validator checks that a destination's ${VAR}s resolve, so writing the
+// destination literally made a promise the engine did not keep.
+func TestFileDestinationIsInterpolated(t *testing.T) {
+	repo := testRepo(t)
+	e := New(workspace.New(t.TempDir()))
+	fsys := NewRecordingFS(map[string][]byte{filepath.Join(repo, "seed"): []byte("x")})
+	e.FS, e.Exec, e.Prob = fsys, &RecordingExecutor{Fail: map[string]bool{}}, PassProber{}
+	spec := &fleet.Spec{
+		Spec: fleet.SpecVersion, Name: "t", Repo: ".", Topology: "flat",
+		Workspace: fleet.Workspace{Isolation: "worktree", Materialise: fleet.Materialise{
+			Ports: []fleet.Port{{Name: "PORT", Range: [2]int{6000, 6009}}},
+			Files: []fleet.File{{From: "seed", To: "env-${PORT}.txt"}}}},
+		Roster: []fleet.Role{{Role: "worker", Agent: "codex", Count: 1}},
+	}
+	res, err := e.Run(spec, repo, "w")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("env-%d.txt", res.Workspace.Ports["PORT"])
+	var found bool
+	for p := range fsys.Writes {
+		if strings.HasSuffix(p, want) {
+			found = true
+		}
+	}
+	if !found {
+		var got []string
+		for p := range fsys.Writes {
+			got = append(got, filepath.Base(p))
+		}
+		t.Errorf("wrote %v, want a file named %q — the destination was written literally", got, want)
+	}
+}

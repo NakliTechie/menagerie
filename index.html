@@ -2707,7 +2707,9 @@
       ["an AWS access key id", /\bAKIA[0-9A-Z]{16}\b/],
       ["an OpenAI-style API key", /\bsk-[A-Za-z0-9_-]{16,}\b/],
       ["a GitHub token", /\bghp_[A-Za-z0-9]{20,}\b/],
-      ["inline database credentials", /\b[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/\s:@"]+:[^/\s:@"]+@/],
+      // The password half allows "/" and ":" — excluding them let
+      // postgres://user:pw/x@host through, and generated passwords carry punctuation.
+      ["inline database credentials", /\b[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s/@"]+:[^\s@"]+@/],
     ];
     const fleetStr = (v) => typeof v === "string" && v !== "";
 
@@ -2750,20 +2752,37 @@
       });
     }
 
-    function fleetCheckFiles(m, add, declared) {
-      (m.files || []).forEach((f, i) => {
-        const base = "/workspace/materialise/files/" + i;
-        const from = fleetStr(f.from), tmpl = fleetStr(f.template);
-        if (!from && !tmpl) add(base, "required", "file entry needs exactly one of from or template");
-        else if (from && tmpl) add(base, "exclusive", "file entry has both from and template");
-        if (!fleetStr(f.to)) add(base + "/to", "required", "file entry needs a destination path");
-        const to = String(f.to || "");
-        if (to.startsWith("/") || to.includes("..")) add(base + "/to", "escapes_workspace", "destination must stay inside the workspace root");
-        for (const is of fleetVarIssues(base + "/to", f.to, declared)) add(is.path, is.code, is.message);
-        (f.vars || []).forEach((v) => {
-          if (!declared.has(v)) add(base + "/vars", "undeclared_var", "template var " + v + " is not an allocated port or a builtin");
-        });
+    // The SOURCE was unconstrained, so a spec could copy anything readable on the
+    // relay's box into the worktree an agent works in. It cannot be as strict as
+    // the destination — the documented pattern reads ../.env.local, a file kept
+    // beside the repo — so the rule is "next to your repo, not anywhere on the box".
+    function fleetCheckFileSource(f, base, add) {
+      const tmpl = fleetStr(f.template);
+      const srcField = tmpl ? "template" : "from";
+      const src = String((fleetStr(f.from) ? f.from : f.template) || "");
+      if (src.startsWith("/") || src.startsWith("~")) {
+        add(base + "/" + srcField, "absolute_source", "source must be relative to the repo, not an absolute path");
+      } else if (fleetEscapesRepoParent(src)) {
+        add(base + "/" + srcField, "source_out_of_bounds", "source may reach the repo's parent directory at most; " + src + " reaches further");
+      }
+    }
+
+    function fleetCheckFileEntry(f, base, add, declared) {
+      const from = fleetStr(f.from), tmpl = fleetStr(f.template);
+      if (!from && !tmpl) add(base, "required", "file entry needs exactly one of from or template");
+      else if (from && tmpl) add(base, "exclusive", "file entry has both from and template");
+      if (!fleetStr(f.to)) add(base + "/to", "required", "file entry needs a destination path");
+      const to = String(f.to || "");
+      if (to.startsWith("/") || to.includes("..")) add(base + "/to", "escapes_workspace", "destination must stay inside the workspace root");
+      fleetCheckFileSource(f, base, add);
+      for (const is of fleetVarIssues(base + "/to", f.to, declared)) add(is.path, is.code, is.message);
+      (f.vars || []).forEach((v) => {
+        if (!declared.has(v)) add(base + "/vars", "undeclared_var", "template var " + v + " is not an allocated port or a builtin");
       });
+    }
+
+    function fleetCheckFiles(m, add, declared) {
+      (m.files || []).forEach((f, i) => fleetCheckFileEntry(f, "/workspace/materialise/files/" + i, add, declared));
     }
 
     function fleetCheckCommands(m, add, declared) {
@@ -2787,6 +2806,17 @@
         if (s.supervise && !fleetStr(s.port_var)) add(base + "/supervise", "requires_port_var", "supervise needs port_var: without a port there is nothing to check after the probe passes");
         for (const is of fleetVarIssues(base + "/run", s.run, declared)) add(is.path, is.code, is.message);
       });
+    }
+
+    // Mirrors escapesRepoParent in relay-go/fleet/validate.go: one ".." is the
+    // documented "beside the repo" case, two or more reaches off the box.
+    function fleetEscapesRepoParent(rel) {
+      let depth = 0;
+      for (const seg of rel.split("/")) {
+        if (seg === "..") { depth++; if (depth > 1) return true; }
+        else if (seg !== "." && seg !== "") { depth = Math.max(0, depth - 1); }
+      }
+      return false;
     }
 
     // escape obeys the same interpolation rule as every other declared field: a
@@ -2860,7 +2890,13 @@
     // browser and the relay judge the same bytes — trimming in a validator while
     // its consumer compares raw is how a padded "http " probe passed validation
     // and then silently ran the wrong branch.
-    const fleetTrim = (v) => (typeof v === "string" ? v.trim() : v);
+    // Mirrors fleet.Whitespace in relay-go/fleet/normalize.go. NOT String.trim():
+    // Go's unicode.IsSpace trims U+0085 and not U+FEFF, JS trim does the opposite,
+    // so the defaults made the relay and the browser judge the same document
+    // differently. The set is written out on both sides instead.
+    const FLEET_WS = "[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]";
+    const FLEET_TRIM_RE = new RegExp("^" + FLEET_WS + "+|" + FLEET_WS + "+$", "g");
+    const fleetTrim = (v) => (typeof v === "string" ? v.replace(FLEET_TRIM_RE, "") : v);
     const fleetArr = (a) => (Array.isArray(a) ? a : []);
     const fleetObj = (o) => (o && typeof o === "object" ? o : null);
 
@@ -2917,10 +2953,20 @@
     // an unparseable document is still a credential), then parse, then validate.
     function fleetValidateText(text) {
       const leaks = fleetLintSecrets(text);
-      if (leaks.length) return leaks;
       let doc;
       try { doc = JSON.parse(text); }
-      catch (e) { return [{ path: "/", code: "malformed", message: "not valid JSON: " + e.message }]; }
+      catch (e) { return leaks.length ? leaks : [{ path: "/", code: "malformed", message: "not valid JSON: " + e.message }]; }
+      // Re-check the DECODED document: a run string written with \u escapes, or
+      // the escaped solidus many serialisers emit, sails past a byte-level match
+      // while decoding to exactly the credential the pattern describes.
+      const decoded = JSON.stringify(doc);
+      for (const [what, re] of FLEET_SECRET_PATTERNS) {
+        if (re.test(decoded)) {
+          leaks.push({ path: "/#decoded", code: "secret_in_spec",
+            message: "the document decodes to something that looks like " + what + "; escaping it does not make it safe to commit (D4)" });
+        }
+      }
+      if (leaks.length) return leaks;
       return fleetValidate(doc);
     }
     // --- fleet-validate:end ---

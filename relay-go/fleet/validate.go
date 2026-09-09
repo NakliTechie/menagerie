@@ -3,6 +3,7 @@ package fleet
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -26,7 +27,11 @@ var varRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // bytes, before anything else, because a leaked credential in an unparseable
 // document is still a leaked credential.
 func ValidateBytes(b []byte) (*Spec, []Issue) {
-	if leaks := LintSecrets(b); len(leaks) > 0 {
+	// Both passes: raw bytes catch a credential in a field this version does not
+	// model, decoded strings catch one hidden behind JSON escapes.
+	leaks := LintSecrets(b)
+	leaks = append(leaks, LintSecretsDecoded(b)...)
+	if len(leaks) > 0 {
 		return nil, leaks
 	}
 	var s Spec
@@ -112,6 +117,22 @@ func Validate(s *Spec) []Issue {
 		}
 		if strings.HasPrefix(f.To, "/") || strings.Contains(f.To, "..") {
 			add(base+"/to", "escapes_workspace", "destination must stay inside the workspace root")
+		}
+		// The SOURCE was unconstrained, so a spec could copy anything readable on
+		// the relay's box — an SSH key, a cloud credentials file — into the worktree
+		// an agent works in. It cannot be as strict as the destination: the
+		// handoff's own example reads `../.env.local`, a file deliberately kept
+		// beside the repo rather than in it. So the rule is "next to your repo, not
+		// anywhere on the box": relative only, and it must resolve no further out
+		// than the repo's parent directory.
+		src := f.From
+		if src == "" {
+			src = f.Template
+		}
+		if strings.HasPrefix(src, "/") || strings.HasPrefix(src, "~") {
+			add(base+"/"+srcField(f), "absolute_source", "source must be relative to the repo, not an absolute path")
+		} else if escapesRepoParent(src) {
+			add(base+"/"+srcField(f), "source_out_of_bounds", "source may reach the repo's parent directory at most; "+src+" reaches further")
 		}
 		out = append(out, undeclaredVars(base+"/to", f.To, declared)...)
 		for _, v := range f.Vars {
@@ -220,4 +241,36 @@ func undeclaredVars(path, s string, declared map[string]bool) []Issue {
 		}
 	}
 	return out
+}
+
+// srcField names whichever of from/template a file entry is using, so an issue
+// points at the field the author actually wrote.
+func srcField(f File) string {
+	if f.Template != "" {
+		return "template"
+	}
+	return "from"
+}
+
+// escapesRepoParent reports whether a relative path climbs above the repo's
+// parent. "../.env.local" is the documented pattern and is allowed; "../../x" and
+// anything deeper is not.
+func escapesRepoParent(rel string) bool {
+	depth := 0
+	for _, seg := range strings.Split(filepath.ToSlash(filepath.Clean(rel)), "/") {
+		switch seg {
+		case "..":
+			depth++
+			if depth > 1 {
+				return true
+			}
+		case ".", "":
+		default:
+			depth--
+			if depth < 0 {
+				depth = 0
+			}
+		}
+	}
+	return false
 }

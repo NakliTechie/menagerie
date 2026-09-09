@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"regexp"
 )
@@ -22,12 +23,21 @@ var secretPatterns = []struct {
 	{"aws_access_key", "an AWS access key id", regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)},
 	{"openai_key", "an OpenAI-style API key", regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}\b`)},
 	{"github_token", "a GitHub token", regexp.MustCompile(`\bghp_[A-Za-z0-9]{20,}\b`)},
-	{"inline_db_credentials", "inline database credentials", regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@"]+:[^/\s:@"]+@`)},
+	// The password half deliberately allows "/" and ":": excluding them let
+	// postgres://user:pw/x@host and postgres://user:pw:x@host through, and a
+	// generated password contains punctuation more often than not.
+	{"inline_db_credentials", "inline database credentials", regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s/@"]+:[^\s@"]+@`)},
 }
 
 // LintSecrets reports credential-shaped strings anywhere in the raw document.
 // It runs on bytes rather than on the parsed Spec so that a credential in a
 // field this version does not model is still caught.
+//
+// Raw bytes alone are not enough: JSON escapes defeat every pattern here. A run
+// string written with \u escapes, or the escaped solidus several serialisers
+// emit by default (postgres:\/\/user:pw@host), sails past a byte-level match
+// while decoding to exactly the credential the pattern describes. So
+// LintSecretsDecoded re-checks the decoded document, and ValidateBytes runs both.
 func LintSecrets(b []byte) []Issue {
 	var out []Issue
 	// bytes.Split, not bufio.Scanner: the scanner has a token cap, and a line over
@@ -47,6 +57,34 @@ func LintSecrets(b []byte) []Issue {
 						"resolve it at materialise time from an environment variable on the relay's box",
 				})
 			}
+		}
+	}
+	return out
+}
+
+// LintSecretsDecoded re-runs the patterns over the document's DECODED strings, so
+// an escaped credential is caught in the form it will actually take. Issues carry
+// "/#decoded" rather than a line number: after decoding there are no lines.
+func LintSecretsDecoded(b []byte) []Issue {
+	var generic any
+	if err := json.Unmarshal(b, &generic); err != nil {
+		return nil // unparseable: the raw pass is the only one that applies
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false) // else < > & become \u escapes and hide a match
+	if err := enc.Encode(generic); err != nil {
+		return nil
+	}
+	var out []Issue
+	for _, p := range secretPatterns {
+		if p.re.Match(buf.Bytes()) {
+			out = append(out, Issue{
+				Path: "/#decoded",
+				Code: "secret_in_spec",
+				Message: "the document decodes to something that looks like " + p.what +
+					"; escaping it does not make it safe to commit (D4)",
+			})
 		}
 	}
 	return out

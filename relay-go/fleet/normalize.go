@@ -14,7 +14,7 @@ import "strings"
 // validator, engine, and the client mirror — sees the same bytes by
 // construction. Adding a field to the spec means adding it here.
 func (s *Spec) normalize() {
-	t := strings.TrimSpace
+	t := trim
 	s.Spec, s.Name, s.Repo, s.Topology = t(s.Spec), t(s.Name), t(s.Repo), t(s.Topology)
 
 	w := &s.Workspace
@@ -66,3 +66,17 @@ func (s *Spec) normalize() {
 		}
 	}
 }
+
+// Whitespace is the ECMAScript WhiteSpace + LineTerminator set, plus U+0085.
+//
+// Neither language's default is authoritative and they disagree: Go's
+// unicode.IsSpace trims U+0085 and not U+FEFF, JavaScript's String.trim does the
+// opposite. Left to defaults, the relay and the browser judged the same document
+// differently — the exact split normalisation exists to prevent. So the set is
+// written out here and mirrored character-for-character in index.html.
+const Whitespace = "\t\n\v\f\r \u0085\u00a0\u1680" +
+	"\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a" +
+	"\u2028\u2029\u202f\u205f\u3000\ufeff"
+
+// trim is the only trimmer this package uses.
+func trim(s string) string { return strings.Trim(s, Whitespace) }
