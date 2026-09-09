@@ -1251,7 +1251,8 @@
       <header><h2>Spawn agent</h2><span class="spacer"></span><button class="btn icon ghost" data-close>✕</button></header>
       <div class="body">
         <div id="spawnParentChip" class="spawn-parent-chip" style="display:none"></div>
-        <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select></div>
+        <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select>
+          <div id="spawnRelayHint" class="combo-hint" hidden>No relay is connected. <button type="button" class="link" id="spawnAddRelayBtn">Add or connect a relay in Settings →</button></div></div>
         <div class="field"><label for="spawnAgentInput">Agent</label>
           <div class="combo" id="spawnAgentCombo">
             <input id="spawnAgentInput" role="combobox" aria-expanded="false" aria-controls="spawnAgentList" aria-autocomplete="list"
@@ -2944,6 +2945,9 @@
       for (const r of connected) { const o = document.createElement("option"); o.value = r.id; o.textContent = r.name; relaySel.appendChild(o); }
       if (connected.some((r) => r.id === prev)) relaySel.value = prev;
       renderAgentOptions(); $("doSpawnBtn").disabled = connected.length === 0;
+      // An empty selector and a disabled Spawn explained nothing about where a relay
+      // comes from; say so, and point at the place that adds one.
+      const hint = $("spawnRelayHint"); hint.hidden = connected.length > 0; hint.style.display = connected.length > 0 ? "none" : "";
       renderSpawnParentChip();
     }
     // The "child of: X" chip only shows when the parent is a live session on the
@@ -3317,6 +3321,7 @@
 
     // ===== wiring =====================================================
     $("settingsBtn").addEventListener("click", () => openModal("settingsScrim"));
+    $("spawnAddRelayBtn").addEventListener("click", () => { closeModal("spawnScrim"); openModal("settingsScrim"); const s = $("relayList"); if (s) { s.scrollIntoView({ block: "start" }); const t = $("localTokenInput") || $("relayUrl"); if (t) t.focus(); } });
     $("spawnBtn").addEventListener("click", openSpawnDialog);
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("helpTourBtn").addEventListener("click", () => { closeModal("helpScrim"); setTimeout(() => showTour({ force: true }), 60); });
