@@ -715,13 +715,48 @@
     }
 
     // ===== relay connection ===========================================
+    // Two spellings of the same relay are the same relay: ws://127.0.0.1:7878,
+    // ws://127.0.0.1:7878/ and ws://localhost:7878 all reach one process. Compared
+    // on the normalized form so adding "the same" relay by hand adopts the row
+    // that already exists instead of making a second one.
+    function relayKey(url) {
+      try {
+        const u = new URL(url);
+        const host = (u.hostname === "localhost" || u.hostname === "::1") ? "127.0.0.1" : u.hostname;
+        const port = u.port || (u.protocol === "wss:" ? "443" : "80");
+        return u.protocol + "//" + host + ":" + port + (u.pathname === "/" ? "" : u.pathname);
+      } catch { return String(url || "").replace(/\/$/, ""); }
+    }
+    function findRelayByUrl(url) {
+      const key = relayKey(url);
+      return relays.find((r) => relayKey(r.url) === key) || null;
+    }
+    // Adding a relay whose URL is already listed adopts the token into that row
+    // rather than creating a duplicate. The built-in localhost row is always
+    // offered, so without this, pasting the token for 127.0.0.1:7878 left two rows
+    // for one relay — one `needs_token`, one connected — and a lookup by URL could
+    // pick the wrong one (found 2026-09-07, cost real time in testing).
     function addRelay(url, token, name) {
+      const existing = findRelayByUrl(url);
+      if (existing) {
+        if (token) existing.token = token;
+        if (name && existing.name === existing.url) existing.name = name;
+        existing.error = null;
+        if (existing.ws && existing.ws.readyState === WebSocket.OPEN && token) {
+          existing.status = "connecting";
+          send(existing, { type: "register", registration_token: token });
+        } else {
+          connect(existing);
+        }
+        persistRelays(); renderAll();
+        return existing;
+      }
       const relay = { id: crypto.randomUUID(), url, token, ws: null, status: "connecting", name: name || url, hello: null, error: null };
       relays.push(relay); connect(relay); persistRelays(); renderAll(); return relay;
     }
     // The local relay is always offered, even on a blank workspace (the common single-machine case).
     // It connects to read `hello`, then waits for its registration token (entered in Settings).
-    function ensureLocalhostRelay() { if (!relays.some((r) => r.url === DEFAULT_LOCAL_URL)) addRelay(DEFAULT_LOCAL_URL, null, "localhost"); }
+    function ensureLocalhostRelay() { if (!findRelayByUrl(DEFAULT_LOCAL_URL)) addRelay(DEFAULT_LOCAL_URL, null, "localhost"); }
     const BACKOFF = [1000, 2000, 4000, 8000, 30000];
     function connect(relay) {
       // Each attempt gets a generation; listeners from a superseded socket bail out,
@@ -763,6 +798,37 @@
       // Snapshot first: destroyTile deletes from `sessions` mid-iteration.
       for (const s of Array.from(sessions.values())) if (s.relayId === id && !s.replay) destroyTile(s);
       relays.splice(i, 1); persistRelays(); renderAll();
+    }
+
+    // Structured frames carry a monotonic `seq` per session. A hole in that
+    // sequence means the relay dropped frames under backpressure — and its
+    // `frames_dropped` marker is a hint, not a guarantee (the marker used to be
+    // queued onto the very outbox that was full). So the client detects loss
+    // itself: a gap is counted and recovered by re-attaching, which makes the
+    // relay replay its tail buffer over the hole.
+    function noteSeqGap(s, msg) {
+      if (!s.acp || typeof msg.seq !== "number" || msg.seq < 0) return; // -1 = replay on attach
+      const last = s.acp.lastSeq;
+      s.acp.lastSeq = msg.seq;
+      if (last === undefined || last === null || msg.seq <= last) return;
+      const missing = msg.seq - last - 1;
+      if (missing <= 0) return;
+      s.acp.dropped = (s.acp.dropped || 0) + missing;
+      recoverFromGap(s, missing);
+    }
+
+    // Re-attach to pull the relay's tail replay over the hole. Throttled: a
+    // client that is behind must not answer backpressure with a burst of
+    // re-attaches, which would make the backlog worse.
+    function recoverFromGap(s, missing) {
+      const now = Date.now();
+      if (s.acp.recoveringAt && now - s.acp.recoveringAt < 3000) return;
+      s.acp.recoveringAt = now;
+      const relay = relays.find((r) => r.id === s.relayId);
+      if (relay && relay.ws && relay.ws.readyState === WebSocket.OPEN) {
+        send(relay, { type: "attach", session_id: s.id });
+      }
+      notify(s.agent + ": " + missing + " frame(s) lost in transit — re-attaching to recover", false);
     }
 
     // Persist a structured frame once, honoring the seq -1 replay convention and
@@ -818,7 +884,12 @@
         // replay rebuilds it instead of appending a duplicate (messages/thoughts
         // don't dedupe the way tool calls do). persistedSeq is preserved so already
         // saved frames are never re-persisted.
-        if (s.transport === "acp" && s.acp) resetAcpTranscript(s);
+        if (s.transport === "acp" && s.acp) {
+          resetAcpTranscript(s);
+          // The tail replays at seq -1 and live frames resume at whatever the
+          // relay has reached, so an old high-water mark would read as a gap.
+          s.acp.lastSeq = null;
+        }
         // The relay's tracked status (SessionInfo.status) is authoritative: a session
         // that finished while the tab was away comes back `done`, badge and all,
         // instead of reading as running (live-check 2026-09-08). An older relay
@@ -835,12 +906,14 @@
       event(relay, msg) { handleSessionEvent(msg); },
       session_update(relay, msg) {
         const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") return;
+        noteSeqGap(s, msg);
         ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
         persistIfNew(s, msg);
         renderStreamTile(s);
       },
       permission_request(relay, msg) {
         const s = sessions.get(msg.session_id); if (!s || s.transport !== "acp") return;
+        noteSeqGap(s, msg);
         // Ingest even at seq -1: a replayed request restores live decision state.
         ingestAcpFrame(s, { dir: "a>c", seq: msg.seq, frame: msg.acp });
         persistIfNew(s, msg);
@@ -1790,7 +1863,13 @@
         const dot = document.createElement("span"); dot.className = "dot-status s-" + r.status;
         const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.name;
         const mt = document.createElement("span"); mt.className = "mt";
-        mt.textContent = r.status === "needs_token" ? "token" : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
+        // A relay in error has usually completed `hello` (the token was rejected
+        // after the handshake), so preferring host/arch whenever hello exists made
+        // a refused relay read as a healthy `darwin/arm64`. State wins over
+        // hardware: the row has to say something the user can act on.
+        mt.textContent = r.status === "needs_token" ? "token"
+          : r.status === "error" ? (r.error ? "error: " + r.error : "error")
+          : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
         row.append(dot, nm, mt);
         row.addEventListener("click", () => openModal("settingsScrim"));
         rel.appendChild(row);
@@ -2700,8 +2779,21 @@
         if (!fleetStr(s.name)) add(base + "/name", "required", "service entry needs a name");
         if (!fleetStr(s.run)) add(base + "/run", "required", "service entry needs a run string");
         if (fleetStr(s.port_var) && !declared.has(s.port_var)) add(base + "/port_var", "undeclared_var", "port_var " + s.port_var + " is not a declared port");
+        // Supervision needs something concrete to check; without a port it would
+        // degrade to "assume it is fine", which is what the field exists to stop.
+        if (s.supervise && !fleetStr(s.port_var)) add(base + "/supervise", "requires_port_var", "supervise needs port_var: without a port there is nothing to check after the probe passes");
         for (const is of fleetVarIssues(base + "/run", s.run, declared)) add(is.path, is.code, is.message);
       });
+    }
+
+    // Hooks are a lifecycle layer beside the six stages, not a seventh stage.
+    function fleetCheckHooks(m, add, declared) {
+      const h = m.hooks;
+      if (!h) return;
+      for (const [field, cmd] of [["on_start", h.on_start], ["on_stop", h.on_stop], ["on_destroy", h.on_destroy]]) {
+        if (!fleetStr(cmd)) continue;
+        for (const is of fleetVarIssues("/workspace/materialise/hooks/" + field, cmd, declared)) add(is.path, is.code, is.message);
+      }
     }
 
     function fleetCheckHealth(m, add, declared) {
@@ -2732,6 +2824,7 @@
       fleetCheckCommands(m, add, declared);
       fleetCheckServices(m, add, declared);
       fleetCheckHealth(m, add, declared);
+      fleetCheckHooks(m, add, declared);
     }
 
     function fleetCheckRoster(d, add) {
