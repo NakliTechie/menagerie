@@ -115,6 +115,16 @@ go vet ./...
 go build ./...
 ```
 
+## Inside NakliOS
+
+Menagerie also runs as a window in [NakliOS](https://naklios.dev), the NakliTechie
+browser desktop, which mirrors this file same-origin under
+`naklios.dev/apps/menagerie/`. There, state lives on whatever storage the user
+connected to NakliOS (Folder or Crate) instead of a folder picked here, and the
+relay's default origin allowlist already admits `https://naklios.dev`. How the
+mirror, the vendored SDK, the storage ladder and the origin gate fit together:
+[docs/naklios.md](docs/naklios.md).
+
 ## More
 
 [`STATE.md`](STATE.md) tracks the shipped feature lines and verification record. [`VISION.md`](VISION.md) holds the roadmap; [`docs/design/v1.2-spec.md`](docs/design/v1.2-spec.md) is the current supervisor-tree design; [`SPEC.md`](SPEC.md), [`HANDOFF-v1.0.md`](HANDOFF-v1.0.md), and [`DEFERRED.md`](DEFERRED.md) preserve the v1.0 anchor and backlog.

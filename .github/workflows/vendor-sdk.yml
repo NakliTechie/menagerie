@@ -1,0 +1,59 @@
+# Keeps Menagerie's inlined naklios.js SDK fresh (docs/naklios.md). Copied from the naklios repo's
+# docs/vendor-sdk.workflow.yml template alongside scripts/vendor-naklios-sdk.mjs. Keeps the inlined SDK fresh
+# against the canonical at https://naklios.dev/sdk/naklios.js by re-splicing it
+# between the naklios-sdk markers and committing it straight to the default branch.
+#
+# App-side re-splice: this repo PULLS the canonical; naklios never pushes, so no
+# cross-repo tokens are needed. Freshness lands within a day (cron) or on demand
+# (workflow_dispatch) — naklios has no push trigger into app repos by design.
+name: Vendor naklios SDK
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * *' # daily; canonical changes are rare
+
+# contents: write only — this commits directly, so no pull-request permission is
+# needed. Opening a PR required "Allow GitHub Actions to create and approve pull
+# requests" to be enabled per repo; it was not, so every scheduled run since
+# 2026-09-03 failed at the last step while the re-splice itself kept succeeding.
+# The drift then accumulated behind a red build until all five apps were ~2.4 KB
+# behind canonical and missing the sovereign-egress surface entirely.
+#
+# Committing directly removes the dependency on a repo setting that can be turned
+# off again. The transformation is deterministic and hash-verified — the splicer
+# refuses bespoke or minified variants rather than mangling them, and
+# check-vendored-sdk.mjs recomputes the region hash so a lying marker is caught —
+# so the PR was review ceremony over a mechanical edit. The tradeoff accepted
+# here: a bad canonical SDK now propagates without a human gate, which is why the
+# verify step below fails the run rather than pushing a splice it cannot confirm.
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Re-splice canonical SDK into index.html
+        run: node scripts/vendor-naklios-sdk.mjs --file index.html
+      - name: Verify the splice before committing it
+        # --check exits 1 on drift, so this passes only when the file on disk
+        # already matches canonical — i.e. the splice above did what it claims.
+        # A splice that cannot be confirmed fails the run instead of being pushed.
+        run: node scripts/vendor-naklios-sdk.mjs --file index.html --check
+      - name: Commit the refreshed SDK
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- index.html; then
+            echo "vendored SDK already matches canonical — nothing to commit"
+            exit 0
+          fi
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- index.html
+          git commit -m 'chore: refresh vendored naklios SDK from canonical'
+          git push
