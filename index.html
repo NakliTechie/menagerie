@@ -31,13 +31,19 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=8322d238687f2e71538e3cca94ea3bb27a482b4bfce91ff0533d1db6267ed667 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=3d63ce56aaaeb74a16c010bb738fbf56ce621ea27ece824cef3353c64898361f — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
  * Drop this file into your app's <head> or copy its contents inline. The
  * surface is a no-op when the app loads standalone (window.parent === window),
  * so the same source works in both contexts:
+ *
+ * Vendoring: if your app needs a capability an iframe sandbox blocks — a folder
+ * picker above all — the supported route is a manifest-declared same-origin
+ * MIRROR under naklios.dev/apps/<id>/, not a hand-copied snapshot. See
+ * docs/app-loading.md. Your repo stays authoritative; the mirror is a pinned,
+ * hash-checked deployment artifact refreshed by CI.
  *
  *   <script src="https://naklios.dev/sdk/naklios.js"><\/script>
  *   <script>
