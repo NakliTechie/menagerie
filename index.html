@@ -1564,6 +1564,9 @@
     // It connects to read `hello`, then waits for its registration token (entered in Settings).
     function ensureLocalhostRelay() { if (!findRelayByUrl(DEFAULT_LOCAL_URL)) addRelay(DEFAULT_LOCAL_URL, null, "localhost"); }
     const BACKOFF = [1000, 2000, 4000, 8000, 30000];
+    const LNA_STALL_MS = 6000;
+    const LNA_HINT = "Still connecting with no error? Chrome 138+ asks once whether this site may reach devices on your local network (this relay included); if that prompt was dismissed, allow it under the lock icon → Site settings → Local network access, then reload.";
+    function lnaStalled() { return relays.some((r) => r.stalled && r.status === "connecting"); }
     function connect(relay) {
       // Each attempt gets a generation; listeners from a superseded socket bail out,
       // so a stale `close` can't flip a freshly-connected relay or stack reconnects.
@@ -1571,7 +1574,12 @@
       if (relay.ws) { try { relay.ws.close(); } catch {} }
       let ws; try { ws = new WebSocket(relay.url); } catch (e) { relay.status = "error"; relay.error = "bad URL: " + e.message; renderAll(); return; }
       relay.ws = ws; relay.status = "connecting"; relay.error = null;
-      ws.addEventListener("open", () => { if (relay.gen !== gen) return; relay.retries = 0; });
+      // A socket that neither opens nor fails is the shape of a blocked local-network
+      // request: Chrome 138+ gates public-site → loopback connections behind a
+      // permission prompt and, once dismissed, the WebSocket just hangs. Say so.
+      clearTimeout(relay.stallTimer); relay.stalled = false;
+      relay.stallTimer = setTimeout(() => { if (relay.gen === gen && ws.readyState === WebSocket.CONNECTING) { relay.stalled = true; renderAll(); } }, LNA_STALL_MS);
+      ws.addEventListener("open", () => { if (relay.gen !== gen) return; relay.retries = 0; clearTimeout(relay.stallTimer); relay.stalled = false; });
       ws.addEventListener("message", (ev) => { if (relay.gen !== gen) return; let m; try { m = JSON.parse(ev.data); } catch { return; } handleMessage(relay, m); });
       ws.addEventListener("close", () => {
         if (relay.gen !== gen || relay.removed) return; // superseded by a newer socket, or relay removed
@@ -2675,7 +2683,8 @@
         // hardware: the row has to say something the user can act on.
         mt.textContent = r.status === "needs_token" ? "token"
           : r.status === "error" ? (r.error ? "error: " + r.error : "error")
-          : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : r.status);
+          : (r.hello ? `${r.hello.host_os}/${r.hello.host_arch}` : (r.stalled ? "blocked?" : r.status));
+        if (r.stalled) row.title = LNA_HINT;
         row.append(dot, nm, mt);
         row.addEventListener("click", () => openModal("settingsScrim"));
         rel.appendChild(row);
@@ -2819,7 +2828,7 @@
       if (relays.length === 0) {
         el.innerHTML = `<h2>No relays yet</h2><p>Add a relay in Settings to connect to where your agents run.</p>`;
         const b = document.createElement("button"); b.className = "btn"; b.textContent = "Open Settings"; b.addEventListener("click", () => openModal("settingsScrim")); el.appendChild(b);
-      } else if (!connected) { el.innerHTML = `<h2>No connected relays</h2><p>Check the relay is running and the token matches.</p>`; }
+      } else if (!connected) { el.innerHTML = `<h2>No connected relays</h2><p>Check the relay is running and the token matches.</p>` + (lnaStalled() ? `<p class="hint">${LNA_HINT}</p>` : ""); }
       else { el.innerHTML = `<h2>No agents running</h2><p>Click <strong>+ Spawn</strong> to start one.</p>`; }
     }
     // Copy-to-clipboard for command rows (delegated handler wired below).
@@ -2872,6 +2881,7 @@
       const recheck = document.createElement("button"); recheck.className = "link"; recheck.textContent = "Recheck now";
       recheck.addEventListener("click", () => { clearTimeout(r.retryTimer); r.retries = 0; connect(r); });
       foot.appendChild(document.createTextNode("Started it? ")); foot.appendChild(recheck); body.appendChild(foot);
+      if (r.stalled) { const lna = document.createElement("p"); lna.className = "hint"; lna.style.margin = "6px 0 0"; lna.textContent = LNA_HINT; body.appendChild(lna); }
     }
     // Step 2 body — paste the registration token and connect.
     function fillSetupStep2(body, r, badToken) {
