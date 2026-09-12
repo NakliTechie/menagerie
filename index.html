@@ -3648,18 +3648,34 @@
           for (const is of fleetVarIssues(base + "/run", p.run, declared)) add(is.path, is.code, is.message);
         } else if (fleetStr(p.probe)) add(base + "/probe", "unsupported", "unknown probe kind " + p.probe);
         else add(base + "/probe", "required", "probe kind is required: http or command");
+        if (Number(p.timeout_s) < 0) add(base + "/timeout_s", "invalid", "timeout_s must be at least 1 when set");
       });
+    }
+
+    // Mirrors fleet/validate.go validBranchPrefix.
+    function fleetValidBranchPrefix(p) {
+      if (p.startsWith("-") || p.includes("${") || p.includes("..") || p.includes("@{")) return false;
+      for (const ch of p) {
+        const c = ch.codePointAt(0);
+        if (c <= 0x20 || c === 0x7f || "~^:?*[\\".includes(ch)) return false;
+      }
+      return true;
     }
 
     function fleetCheckWorkspace(d, add, declared, portNames) {
       const ws = d.workspace || {}, m = ws.materialise || {};
       fleetCheckPorts(m, add, declared, portNames);
-      const declaredCount = (m.ports || []).length + (m.files || []).length + (m.commands || []).length;
-      if (!fleetStr(ws.isolation) && declaredCount === 0 && !fleetStr(m.escape)) {
-        add("/workspace", "required", "workspace is required and must declare an isolation and a materialise block");
-      }
-      if (fleetStr(ws.isolation) && ws.isolation !== "worktree") {
+      // The schema requires isolation; the runtime agrees, so an editor and the
+      // relay never disagree about the same document.
+      if (!fleetStr(ws.isolation)) {
+        add("/workspace/isolation", "required", 'workspace.isolation is required; only "worktree" is supported');
+      } else if (ws.isolation !== "worktree") {
         add("/workspace/isolation", "unsupported", 'only "worktree" isolation is supported');
+      }
+      // branch_prefix becomes part of a git ref and of ${BRANCH}: no option-like
+      // leading dash, no whitespace, no interpolation markers, nothing git refuses.
+      if (fleetStr(ws.branch_prefix) && !fleetValidBranchPrefix(ws.branch_prefix)) {
+        add("/workspace/branch_prefix", "invalid", "branch_prefix must be a plain ref prefix: no leading '-', whitespace, '${', '..', '~', '^', ':', '?', '*', '[', '\\' or '@{'");
       }
       fleetCheckEscape(m, add, declared);
       fleetCheckFiles(m, add, declared);
@@ -3677,6 +3693,7 @@
         if (!fleetStr(r.role)) add(base + "/role", "required", "role needs a role name");
         if (!(Number(r.count) >= 1)) add(base + "/count", "invalid", "count must be at least 1");
         if (Number(r.max_depth) < 0) add(base + "/max_depth", "invalid", "max_depth cannot be negative");
+        if (Number(r.context_budget_tokens) < 0) add(base + "/context_budget_tokens", "invalid", "context_budget_tokens must be at least 1 when set");
       });
     }
 
@@ -3685,6 +3702,12 @@
       if (b && b.on_exceed !== undefined && !["", "drain", "kill"].includes(b.on_exceed)) {
         add("/budgets/on_exceed", "unsupported", "on_exceed must be drain or kill");
       }
+      if (b) {
+        if (Number(b.per_agent_usd) < 0) add("/budgets/per_agent_usd", "invalid", "per_agent_usd cannot be negative");
+        if (Number(b.per_run_usd) < 0) add("/budgets/per_run_usd", "invalid", "per_run_usd cannot be negative");
+        if (Number(b.per_agent_wallclock_min) < 0) add("/budgets/per_agent_wallclock_min", "invalid", "per_agent_wallclock_min must be at least 1 when set");
+      }
+      if (d.exits && Number(d.exits.no_progress_repeats) < 0) add("/exits/no_progress_repeats", "invalid", "no_progress_repeats must be at least 1 when set");
     }
 
     // Mirrors relay-go/fleet/normalize.go. One place cleans a value, so the
