@@ -290,6 +290,7 @@ The relay maps `text` to ACP content blocks. Prompt completion surfaces as `even
 | `invalid_token` | `input`/`signal`/`resume`/`prompt`/`permission_response` carried a missing or wrong `session_token`. Frame dropped. |
 | `unsupported_transport` | (1.2) `spawn.transport` names a transport this relay cannot honor. |
 | `unknown_request` | (1.2) `permission_response.request_id` matches no pending permission request. |
+| `session_taken` | (1.3) Sent to a session's previous client when another client `attach`es: the relay streams to one client per session, the old `session_token` is void, and live frames now go to the newcomer. Re-`attach` to take the stream back. |
 
 The set is **open-ended** — clients MUST tolerate unknown codes and surface `message` to the user.
 

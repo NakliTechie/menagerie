@@ -62,6 +62,7 @@ export type ErrorCode =
   | "unknown_agent" // spawn requested an agent not in hello.agents
   | "spawn_failed" // relay could not start the agent (bad cwd, exec error, …)
   | "invalid_token" // input/signal/resume carried a wrong/missing session_token
+  | "session_taken" // (1.3) another client attached; this client's token is void — re-attach to view again
   | (string & {});
 
 // ---- Message envelope -----------------------------------------------------
