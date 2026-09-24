@@ -29,6 +29,7 @@ on:
 # verify step below fails the run rather than pushing a splice it cannot confirm.
 permissions:
   contents: write
+  actions: write # dispatch test.yml after a refresh — a GITHUB_TOKEN push starts no workflows
 
 jobs:
   vendor:
@@ -46,10 +47,12 @@ jobs:
         # A splice that cannot be confirmed fails the run instead of being pushed.
         run: node scripts/vendor-naklios-sdk.mjs --file index.html --check
       - name: Commit the refreshed SDK
+        id: commit
         run: |
           set -euo pipefail
           if git diff --quiet -- index.html; then
             echo "vendored SDK already matches canonical — nothing to commit"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name  'github-actions[bot]'
@@ -57,3 +60,15 @@ jobs:
           git add -- index.html
           git commit -m 'chore: refresh vendored naklios SDK from canonical'
           git push
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      - name: Test the refreshed app
+        # A push made with GITHUB_TOKEN starts no workflows, so test.yml never saw a refresh — Lorewell's
+        # suite sat red for four weeks behind green vendor runs (2026-08-29 → 09-24). A workflow_dispatch
+        # sent with the same token IS allowed. Skipped when nothing was pushed or the repo has no test.yml.
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f .github/workflows/test.yml ]; then echo "no test.yml — nothing to dispatch"; exit 0; fi
+          gh workflow run test.yml --ref "${GITHUB_REF_NAME}"
