@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=393979d591d309710e44698e9c168a95edb5982ecb552e34b3a273294b4ef8e5 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=4090343621c72c98d16cf53f0fe95174797e32724a73826c12757ced2b262bd4 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -198,6 +198,7 @@
   var aiImageRequests = new Map(); // requestId → image request state
   var ragSearches = new Map();     // requestId → semantic-search progress callback
   var fileOpenListeners = new Set(); // exact-file grants delivered by the host
+  var commandHandlers = new Map(); // command name → handler (common rail step 1)
   var pendingFileGrants = [];
   var fileEditListeners = new Set();
   var pendingFileEdits = [];
@@ -731,6 +732,18 @@
           send('naklios:review:applied', { proposal_id: reviewId, ok: false, error: String(error && error.message || error) });
         });
       }
+    } else if (msg.type === 'naklios:commands:invoke' && typeof msg.invokeId === 'string') {
+      // A caller reached one of this app's commands through the desktop catalog, which already
+      // checked its grant. The handler's value goes back as the result; a throw as the error.
+      var invokeId = msg.invokeId;
+      var handler = commandHandlers.get(msg.name);
+      if (!handler) { send('naklios:commands:result', { invokeId: invokeId, error: 'unknown command: ' + String(msg.name) }); return; }
+      Promise.resolve().then(function () { return handler(msg.args || {}, { caller: msg.caller || null }); }).then(
+        function (result) {
+          try { send('naklios:commands:result', { invokeId: invokeId, result: result === undefined ? null : result }); }
+          catch (error) { send('naklios:commands:result', { invokeId: invokeId, error: 'result could not be sent: ' + String(error && error.message || error) }); }
+        },
+        function (error) { send('naklios:commands:result', { invokeId: invokeId, error: String(error && error.message || error) }); });
     } else if (msg.type === 'naklios:review:discard' && msg.proposal_id) {
       if (reviewDecisionHandler) {
         Promise.resolve().then(function () {
@@ -738,7 +751,7 @@
         }).catch(function () {});
       }
     } else if ((msg.type === 'naklios:fs:reply' || msg.type === 'naklios:file:reply' ||
-                msg.type === 'naklios:review:reply' ||
+                msg.type === 'naklios:review:reply' || msg.type === 'naklios:commands:reply' ||
                 msg.type === 'naklios:rag:reply' || msg.type === 'naklios:net:reply' ||
                 msg.type === 'naklios:skills:reply') && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
@@ -819,6 +832,28 @@
     // agent. list() returns the skills an agent may use (Sentinel-clean, active or stale) without bodies;
     // read(name) returns one with its body; propose() writes a STAGED skill that binds only after a person
     // activates it. System apps only; standalone it is an empty library.
+    // Common rail step 1 (docs/app-contract.md, "Common rail"): the app declares what it can do. Each
+    // command is { name, description, input (JSON Schema object), scope: 'read'|'write'|'destructive',
+    // handler(args, context) }. The desktop lists them as `<app-id>.<name>`, checks every caller's grant,
+    // and stages `destructive` ones for the person; the handler runs only after that. A later call
+    // replaces the whole set. Standalone, the handlers are kept and nothing is sent.
+    experimental_commands: {
+      register: function (list) {
+        if (!Array.isArray(list)) return Promise.reject(new Error('naklios.experimental_commands.register needs a list'));
+        var meta = [];
+        var handlers = new Map();
+        for (var i = 0; i < list.length; i++) {
+          var c = list[i] || {};
+          if (typeof c.handler !== 'function') return Promise.reject(new Error('command ' + String(c.name) + ' needs a handler'));
+          if (handlers.has(c.name)) return Promise.reject(new Error('duplicate command: ' + String(c.name)));
+          handlers.set(c.name, c.handler);
+          meta.push({ name: c.name, description: c.description, input: c.input, scope: c.scope });
+        }
+        commandHandlers = handlers;
+        if (!inNakliOS) return Promise.resolve({ standalone: true, registered: [] });
+        return rpc('naklios:commands:register', { commands: meta });
+      },
+    },
     experimental_skills: {
       list: function () {
         if (!inNakliOS) return Promise.resolve([]);
