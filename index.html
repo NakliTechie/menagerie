@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=4090343621c72c98d16cf53f0fe95174797e32724a73826c12757ced2b262bd4 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=24328247d3b8b2d780399964857d87495d3e2d901baaae1da51356d189c47636 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -199,6 +199,7 @@
   var ragSearches = new Map();     // requestId → semantic-search progress callback
   var fileOpenListeners = new Set(); // exact-file grants delivered by the host
   var commandHandlers = new Map(); // command name → handler (common rail step 1)
+  var commandCalls = new Map(); // invokeId → AbortController of a running handler
   var pendingFileGrants = [];
   var fileEditListeners = new Set();
   var pendingFileEdits = [];
@@ -244,6 +245,10 @@
       return true;
     } catch (_) { return false; }
   }
+
+  // A call can wait on the person's answer, on the app opening, and on its handler.
+  var COMMAND_CALL_TIMEOUT_MS = 300000;
+  var AI_LOCAL_TIMEOUT_MS = 300000;
 
   function rpc(type, payload, timeoutMs) {
     if (!inNakliOS) return Promise.reject(new Error('Not hosted — naklios.* unavailable standalone'));
@@ -455,8 +460,8 @@
       messages: Array.isArray(options.messages) ? options.messages : [],
       maxTokens: options.max_tokens || options.maxTokens,
     };
-    // Agent tier (system apps only): raised caps + tool-calling. The host
-    // refuses agent:true from a third-party app, so passing it is harmless.
+    // Agent tier: tool-calling for first-party apps, with raised caps, and for a third-party
+    // app that declared the "tools" permission, at the normal caps. The host refuses the rest.
     if (options.agent === true) chatMsg.agent = true;
     if (options.tools != null) chatMsg.tools = options.tools;
     if (options.tool_choice != null) chatMsg.tool_choice = options.tool_choice;
@@ -700,6 +705,7 @@
         sourceAppId: String(msg.grant.sourceAppId || ''),
         backend: String(msg.grant.backend || ''),
         kind: String(msg.grant.kind || 'file'),
+        type: msg.grant.type ? String(msg.grant.type) : undefined,
       };
       if (!grant.token) return;
       if (!fileOpenListeners.size) pendingFileGrants.push(grant);
@@ -738,12 +744,23 @@
       var invokeId = msg.invokeId;
       var handler = commandHandlers.get(msg.name);
       if (!handler) { send('naklios:commands:result', { invokeId: invokeId, error: 'unknown command: ' + String(msg.name) }); return; }
-      Promise.resolve().then(function () { return handler(msg.args || {}, { caller: msg.caller || null }); }).then(
+      var controller = new AbortController();
+      commandCalls.set(invokeId, controller);
+      Promise.resolve().then(function () { return handler(msg.args || {}, { caller: msg.caller || null, signal: controller.signal }); }).then(
         function (result) {
-          try { send('naklios:commands:result', { invokeId: invokeId, result: result === undefined ? null : result }); }
-          catch (error) { send('naklios:commands:result', { invokeId: invokeId, error: 'result could not be sent: ' + String(error && error.message || error) }); }
+          commandCalls.delete(invokeId);
+          // send() reports a value that cannot be cloned by returning false.
+          if (send('naklios:commands:result', { invokeId: invokeId, result: result === undefined ? null : result }) === false)
+            send('naklios:commands:result', { invokeId: invokeId, error: 'the command result could not be sent' });
         },
-        function (error) { send('naklios:commands:result', { invokeId: invokeId, error: String(error && error.message || error) }); });
+        function (error) {
+          commandCalls.delete(invokeId);
+          send('naklios:commands:result', { invokeId: invokeId, error: String(error && error.message || error) });
+        });
+    } else if (msg.type === 'naklios:commands:cancel' && typeof msg.invokeId === 'string') {
+      // The caller stopped waiting. A handler reads this through its `signal`; work already done stays done.
+      var running = commandCalls.get(msg.invokeId);
+      if (running) { commandCalls.delete(msg.invokeId); running.abort(); }
     } else if (msg.type === 'naklios:review:discard' && msg.proposal_id) {
       if (reviewDecisionHandler) {
         Promise.resolve().then(function () {
@@ -753,7 +770,7 @@
     } else if ((msg.type === 'naklios:fs:reply' || msg.type === 'naklios:file:reply' ||
                 msg.type === 'naklios:review:reply' || msg.type === 'naklios:commands:reply' ||
                 msg.type === 'naklios:rag:reply' || msg.type === 'naklios:net:reply' ||
-                msg.type === 'naklios:skills:reply') && msg.requestId) {
+                msg.type === 'naklios:skills:reply' || msg.type === 'naklios:ai:reply') && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
       if (!p) return;
       pendingRpc.delete(msg.requestId);
@@ -852,6 +869,23 @@
         commandHandlers = handlers;
         if (!inNakliOS) return Promise.resolve({ standalone: true, registered: [] });
         return rpc('naklios:commands:register', { commands: meta });
+      },
+      // System apps only: find and call other apps' commands. The host applies the caller's grant and asks the person.
+      search: function (query) {
+        if (!inNakliOS) return Promise.resolve([]);
+        return rpc('naklios:commands:search', { query: String(query || '') });
+      },
+      call: function (name, input) {
+        if (!inNakliOS) return Promise.reject(new Error('Not hosted — app commands are unavailable standalone'));
+        return rpc('naklios:commands:call', { name: String(name || ''), input: input || {} }, COMMAND_CALL_TIMEOUT_MS);
+      },
+    },
+    experimental_widgets: {
+      // One snapshot for a widget the app declares in commands.json; `null` removes the card. `persist: false`
+      // keeps it in memory only, for data the desktop must not copy to disk (Crate). Standalone: does nothing.
+      update: function (id, data, options) {
+        if (!inNakliOS) return false;
+        return send('naklios:widgets:update', { id: String(id || ''), data: data === undefined ? null : data, persist: !options || options.persist !== false }) !== false;
       },
     },
     experimental_skills: {
@@ -952,6 +986,19 @@
           path: String(path || ''),
         }));
       },
+      // Which apps declared they take this file (`accepts` in their commands.json), as `{ appId, name, action, label }`.
+      experimental_targets: function (path) {
+        if (!inNakliOS) return Promise.resolve([]);
+        return rpc('naklios:file:targets', { path: String(path || '') });
+      },
+      // Send copies of app-relative files to an app that imports them. The target gets one read-only token per file;
+      // `read(token)` answers `{ bytes, name, path, type, sourceAppId, backend }`.
+      experimental_sendTo: function (appId, paths) {
+        return rpc('naklios:file:sendTo', fsPayload({
+          appId: String(appId || ''),
+          paths: (Array.isArray(paths) ? paths : [paths]).map(String),
+        }));
+      },
       onOpen: function (cb) {
         if (typeof cb !== 'function') return function () {};
         fileOpenListeners.add(cb);
@@ -1016,6 +1063,19 @@
       },
       searchStatus: function () {
         return rpc('naklios:rag:status', {});
+      },
+      // On-device helpers (common rail step 5). Nothing leaves this browser; the person allows each app once per visit.
+      // Embeddings: up to 64 texts, answered as `{ embeddings, dimensions }`.
+      experimental_embeddings: function (input) {
+        return rpc('naklios:ai:embed', { input: Array.isArray(input) ? input : [input] }, AI_LOCAL_TIMEOUT_MS);
+      },
+      // Speech to text: 16 kHz mono samples, at most 30 s, answered as `{ text }`. Needs the assistant's model turned on.
+      experimental_transcribe: function (audio) {
+        return rpc('naklios:ai:transcribe', { audio: audio }, AI_LOCAL_TIMEOUT_MS);
+      },
+      // Text to speech: at most 1,000 characters, answered as `{ audio, sampleRate }`. Needs the assistant's model turned on.
+      experimental_speak: function (text) {
+        return rpc('naklios:ai:speak', { text: String(text || '') }, AI_LOCAL_TIMEOUT_MS);
       },
       cancelAll: function () {
         aiRequests.forEach(function (_, requestId) {
