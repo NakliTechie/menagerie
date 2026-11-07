@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=24328247d3b8b2d780399964857d87495d3e2d901baaae1da51356d189c47636 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=3f108f13a29ae2d4fde8f8a0e5bb3f21e80877cf1de7a56fe7be3623402f0c26 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -182,6 +182,8 @@
     aiImageState: 'idle',
     aiSearchState: 'idle',
     aiSearch: false,
+    // experimental_tex: this app may compile LaTeX projects in its own storage.
+    experimental_tex: false,
     // net: a sovereign egress backend (the user's own Worker or local bridge) is
     // configured + permitted, so naklios.net.fetch can reach cross-origin hosts the
     // browser blocks. Stays false until a host advertises one — the SDK seam.
@@ -197,6 +199,7 @@
   var aiRequests = new Map(); // requestId → streamed request state
   var aiImageRequests = new Map(); // requestId → image request state
   var ragSearches = new Map();     // requestId → semantic-search progress callback
+  var texCompiles = new Map();     // requestId → TeX compile chunk callback
   var fileOpenListeners = new Set(); // exact-file grants delivered by the host
   var commandHandlers = new Map(); // command name → handler (common rail step 1)
   var commandCalls = new Map(); // invokeId → AbortController of a running handler
@@ -608,12 +611,16 @@
         ? msg.aiSearchState
         : 'idle';
       capabilities.aiSearch = msg.aiSearch === true;
+      capabilities.experimental_tex = msg.experimental_tex === true;
       capabilities.net = msg.net === true;
       capabilities.netBackend = typeof msg.netBackend === 'string' ? msg.netBackend : null;
       capabilities.review = msg.review === true;
       capListeners.forEach(function (cb) {
         try { cb(capabilities); } catch (_) {}
       });
+    } else if (msg.type === 'naklios:tex:event' && msg.requestId) {
+      var texChunk = texCompiles.get(msg.requestId);
+      if (texChunk && msg.event === 'chunk') { try { texChunk(msg.chunk); } catch (_) {} }
     } else if (msg.type === 'naklios:rag:event' && msg.requestId) {
       var ragRequest = ragSearches.get(msg.requestId);
       if (ragRequest && msg.event === 'indexing') {
@@ -770,6 +777,7 @@
     } else if ((msg.type === 'naklios:fs:reply' || msg.type === 'naklios:file:reply' ||
                 msg.type === 'naklios:review:reply' || msg.type === 'naklios:commands:reply' ||
                 msg.type === 'naklios:rag:reply' || msg.type === 'naklios:net:reply' ||
+                msg.type === 'naklios:tex:reply' ||
                 msg.type === 'naklios:skills:reply' || msg.type === 'naklios:ai:reply') && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
       if (!p) return;
@@ -1017,6 +1025,42 @@
       release: function (token) {
         send('naklios:file:release', { token: String(token || '') });
       },
+    },
+    // The shared TeX service. The host reads the project itself, so no file bytes cross the rail. A first compile asks
+    // the person once and downloads TeX Live, so it waits up to two hours; later compiles take seconds.
+    experimental_tex: {
+      engines: function () { return rpc('naklios:tex:engines', {}); },
+      compile: function (options) {
+        if (!inNakliOS) return Promise.reject(new Error('Not hosted — naklios.experimental_tex unavailable standalone'));
+        if (!capabilities.experimental_tex) return Promise.reject(new Error('The NakliOS TeX service is unavailable or not permitted'));
+        options = options || {};
+        var requestId = 't' + (++rpcCounter) + '_' + Date.now();
+        var timer;
+        var compile = new Promise(function (resolve, reject) {
+          if (typeof options.onChunk === 'function') texCompiles.set(requestId, options.onChunk);
+          pendingRpc.set(requestId, { resolve: resolve, reject: reject });
+          if (send('naklios:tex:compile', {
+            requestId: requestId, folder: options.folder, main: options.main, engine: options.engine,
+          }) === false) {
+            pendingRpc.delete(requestId);
+            reject(new Error('Wait for a verified NakliOS host before sending more data'));
+            return;
+          }
+          timer = setTimeout(function () {
+            if (pendingRpc.has(requestId)) {
+              pendingRpc.delete(requestId);
+              send('naklios:tex:cancel', { requestId: requestId });
+              reject(new Error('naklios RPC timeout: naklios:tex:compile'));
+            }
+          }, 2 * 60 * 60 * 1000);
+        }).finally(function () { clearTimeout(timer); texCompiles.delete(requestId); });
+        compile.id = requestId;
+        return compile;
+      },
+      cancel: function (id) { send('naklios:tex:cancel', { requestId: String(id) }); },
+      cache: function () { return rpc('naklios:tex:cache', {}); },
+      // Waits for the person to answer the host's dialog.
+      clearCache: function () { return rpc('naklios:tex:clearCache', {}, 10 * 60 * 1000); },
     },
     ai: {
       chat: {
