@@ -1,0 +1,12 @@
+{
+  "type": "github_item_result",
+  "request_id": "i-2",
+  "state": "ok",
+  "item": {
+    "kind": "pr", "repo": "cli/cli", "number": 14783, "title": "Verify release downloads",
+    "url": "https://github.com/cli/cli/pull/14783", "author": "mrecachinas", "state": "OPEN",
+    "body": "Adds checksum verification.\n\n<b>not html</b>", "body_truncated": false,
+    "head_ref": "release-download-verify", "head_repo": "mrecachinas/cli",
+    "cross_repository": true, "maintainer_can_modify": true
+  }
+}
