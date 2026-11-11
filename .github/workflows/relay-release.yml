@@ -47,7 +47,9 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          NOTES="Prebuilt \`menagerie-relay\` binaries — one per machine, runs all your agents on that host.
+          NOTES="Rebuilt with Go 1.27.3 / patched certificate stores after the eMudhra CA compromise (Go 1.27.3 blocks the eight compromised intermediates in its own verifier). No source change from 0.6.0; the list below is the 0.6.0 feature set.
+
+          Prebuilt \`menagerie-relay\` binaries — one per machine, runs all your agents on that host.
 
           1. Download the file for your OS/arch below.
           2. \`chmod +x menagerie-relay-*\`
