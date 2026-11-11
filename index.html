@@ -4090,14 +4090,21 @@
     function failReadsForRelay(relayId) {
       for (const [id, p] of pendingReads) if (p.relayId === relayId) settleRead(id, { state: "not_connected", local: true });
     }
-    // error{invalid_token} for a session with a read in flight: that read ends
-    // with no data, and the toast the generic path would raise is not needed.
+    // An error frame that belongs to a read ends that read with no data. It is
+    // handled here, before the generic path, because the generic path clears the
+    // pending-spawn maps (and with them an Inbox handoff draft) on any error.
+    //  - an error echoing a pending read's request_id settles exactly that read;
+    //  - error{invalid_token} for a session with reads in flight settles them and
+    //    still raises one toast, since a prompt or input may have failed with it too.
     function errorForRead(relay, msg) {
+      const p = typeof msg.request_id === "string" ? pendingReads.get(msg.request_id) : null;
+      if (p && p.relayId === relay.id) { settleRead(msg.request_id, { state: "unavailable", local: true }); return true; }
       if (msg.code !== "invalid_token" || !msg.session_id) return false;
       let hit = false;
-      for (const [id, p] of pendingReads) {
-        if (p.relayId === relay.id && p.sessionId === msg.session_id) { settleRead(id, { state: "invalid_token", local: true }); hit = true; }
+      for (const [id, q] of pendingReads) {
+        if (q.relayId === relay.id && q.sessionId === msg.session_id) { settleRead(id, { state: "invalid_token", local: true }); hit = true; }
       }
+      if (hit) notify("invalid_token: " + (msg.message || ""), false);
       return hit;
     }
 
@@ -4290,8 +4297,10 @@
       if (!FS.ok()) return;
       let doc = null;
       try { doc = await FS.readJSON([MENAGERIE_DIR, ACTIONS_FILE]); } catch (e) { console.warn("read saved actions failed", e); }
-      const parsed = parseSavedActions(doc);
-      if (parsed) { savedActions = parsed; actionsVersion++; }
+      // A workspace without actions.json starts from the defaults, so edits made
+      // in another folder never carry over (and are never saved into this one).
+      savedActions = parseSavedActions(doc) || DEFAULT_ACTIONS.map((a) => ({ ...a }));
+      actionsVersion++;
       renderActionSettings(); syncActionControls();
     }
     async function persistSavedActions() {
@@ -4523,6 +4532,8 @@
       const key = refKey(it), gen = inbox.gen;
       sendRead(relay, { type: "github_item", kind: it.kind, repo: it.repo, number: it.number }, null, (msg) => {
         if (gen !== inbox.gen || !inbox.sel || refKey(inbox.sel) !== key) return;
+        // The item must be the one asked for, or the header and the draft would disagree.
+        if (msg.state === "ok" && !(validRef(msg.item) && refKey(msg.item) === key)) msg = { state: "unavailable", local: true };
         inbox.itemLoading = false; inbox.item = msg; renderInbox();
       });
     }
@@ -4617,7 +4628,11 @@
       x.addEventListener("click", () => { spawnHandoff = null; renderSpawnHandoff(); });
       chip.replaceChildren(t, x);
     }
-    function holdHandoff(clientId) { if (spawnHandoff) pendingDraft.set(clientId, spawnHandoff.text); }
+    // One handoff draft goes to one spawn: a double-click on Spawn sends two
+    // spawns, and only the first carries the draft. spawnHandoff itself stays
+    // until a spawn succeeds, so a failed spawn (which clears pendingDraft) can
+    // be retried with the draft.
+    function holdHandoff(clientId) { if (spawnHandoff && pendingDraft.size === 0) pendingDraft.set(clientId, spawnHandoff.text); }
     function applyHandoffDraft(sess, clientId) {
       const text = pendingDraft.get(clientId); if (!text) return;
       pendingDraft.delete(clientId); spawnHandoff = null;
@@ -5067,7 +5082,7 @@
               // Drop a fake relay's connection, as a network failure would.
               dropRelay(id) {
                 const r = relays.find((x) => x.id === id); if (!r) return "none";
-                r.status = "connecting"; failWaitsForRelay(id); renderAll(); return "ok";
+                r.status = "connecting"; failWaitsForRelay(id); failReadsForRelay(id); renderAll(); return "ok";
               },
               // Install a fake connected relay advertising `agents` — for exercising
               // the spawn dialog's agent combobox without a real relay.
