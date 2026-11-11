@@ -46,6 +46,37 @@ const STATUSES = ["running", "idle", "done", "needs_input", "stalled", "rate_lim
 const EVENTS = ["exited", "idle", "done", "needs_input", "child_spawned", "rate_limited", "stalled", "unknown", "running"];
 const OUTCOMES = ["approve", "reject", "approve_always"];
 
+const READ_STATES = [
+  "ok", "not_repository", "no_directory", "unavailable", "timeout", "busy",
+  "gh_missing", "not_authenticated", "rate_limited", "no_remote", "no_pr", "not_found",
+];
+const BUCKETS = ["pass", "fail", "pending", "skipping", "cancel"];
+const isReqId = (v) => (typeof v === "string" && v.length >= 1 && v.length <= 64 ? true : "expected 1–64 char request_id");
+const isNonNegInt = (v) => Number.isInteger(v) && v >= 0;
+const isPosInt = (v) => Number.isInteger(v) && v > 0;
+const isRepo = (v) => (typeof v === "string" && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v) ? true : "expected owner/name");
+const isKind = (v) => v === "pr" || v === "issue";
+const readState = (v) => (READ_STATES.includes(v) ? true : `expected one of ${READ_STATES}`);
+const inboxItems = (v) =>
+  Array.isArray(v) &&
+  v.length <= 50 &&
+  v.every((i) => obj(i) && isKind(i.kind) && isRepo(i.repo) === true && isPosInt(i.number) && typeof i.title === "string" && i.title.length <= 200 && isStr(i.url))
+    ? true
+    : "expected InboxItem[] (≤ 50)";
+
+const optBool = (v) => v === undefined || isBool(v);
+const itemDetail = shape({
+  kind: [isKind, true],
+  repo: [isRepo, true],
+  number: [isPosInt, true],
+  title: [(v) => typeof v === "string", true],
+  url: [isStr, true],
+  body: [(v) => typeof v === "string" && v.length <= 16384, false],
+  body_truncated: [optBool, false],
+  cross_repository: [optBool, false],
+  maintainer_can_modify: [optBool, false],
+});
+
 const strArr = (v) => (Array.isArray(v) && v.every(isStr) ? true : "expected string[]");
 const transportArr = (v) =>
   Array.isArray(v) && v.every((t) => TRANSPORTS.includes(t)) ? true : `expected subset of ${TRANSPORTS}`;
@@ -62,6 +93,7 @@ const S = {
     transports: [transportArr, true],
     hosts_children: [isBool, true],
     resume_agents: [strArr, false], // agents that can reopen their own past conversations
+    capabilities: [strArr, false], // protocol 1.5: capability-gated reads
     agent_transports: [
       (v) =>
         obj(v) &&
@@ -217,6 +249,80 @@ const S = {
     text: [isStr, true],
     // §8.2 atomic prompt+wait: same rules as a standalone wait's `until`.
     wait: [(v) => obj(v) && strArr(v.until) && v.until.length > 0 && v.until.every((x) => STATUSES.includes(x)), false],
+  }),
+  // protocol 1.5 — capability-gated repository and GitHub reads.
+  git_status: shape({
+    type: [(v) => v === "git_status", true],
+    session_id: [isStr, true],
+    session_token: [isStr, true],
+    request_id: [isReqId, true],
+  }),
+  git_status_result: shape({
+    type: [(v) => v === "git_status_result", true],
+    session_id: [isStr, true],
+    request_id: [isReqId, true],
+    state: [readState, true],
+    branch: [isStr, false],
+    detached: [isBool, false],
+    unborn: [isBool, false],
+    head: [isStr, false],
+    upstream: [isStr, false],
+    ahead: [isNonNegInt, false],
+    behind: [isNonNegInt, false],
+    files: [
+      (v) =>
+        Array.isArray(v) && v.length <= 200 && v.every((f) => obj(f) && isStr(f.path) && isStr(f.index) && isStr(f.worktree))
+          ? true
+          : "expected GitFileEntry[] (≤ 200)",
+      false,
+    ],
+    files_total: [isNonNegInt, false],
+    truncated: [isBool, false],
+  }),
+  github_inbox: shape({ type: [(v) => v === "github_inbox", true], request_id: [isReqId, true] }),
+  github_inbox_result: shape({
+    type: [(v) => v === "github_inbox_result", true],
+    request_id: [isReqId, true],
+    state: [readState, true],
+    review_requested: [inboxItems, false],
+    assigned: [inboxItems, false],
+    truncated: [isBool, false],
+  }),
+  github_item: shape({
+    type: [(v) => v === "github_item", true],
+    request_id: [isReqId, true],
+    kind: [isKind, true],
+    repo: [isRepo, true],
+    number: [isPosInt, true],
+  }),
+  github_item_result: shape({
+    type: [(v) => v === "github_item_result", true],
+    request_id: [isReqId, true],
+    state: [readState, true],
+    item: [(v) => (obj(v) && itemDetail(v).length === 0 ? true : `expected GitHubItemDetail: ${obj(v) ? itemDetail(v) : "not an object"}`), false],
+  }),
+  session_pr: shape({
+    type: [(v) => v === "session_pr", true],
+    session_id: [isStr, true],
+    session_token: [isStr, true],
+    request_id: [isReqId, true],
+  }),
+  session_pr_result: shape({
+    type: [(v) => v === "session_pr_result", true],
+    session_id: [isStr, true],
+    request_id: [isReqId, true],
+    state: [readState, true],
+    pr: [(v) => (obj(v) && isPosInt(v.number) && isStr(v.url) && isStr(v.state) ? true : "expected SessionPrInfo"), false],
+    checks: [
+      (v) =>
+        Array.isArray(v) && v.length <= 100 && v.every((c) => obj(c) && isStr(c.name) && BUCKETS.includes(c.bucket))
+          ? true
+          : "expected SessionPrCheck[] (≤ 100)",
+      false,
+    ],
+    summary: [(v) => (obj(v) && BUCKETS.every((b) => isNonNegInt(v[b])) ? true : "expected bucket counts"), false],
+    checks_total: [isNonNegInt, false],
+    truncated: [isBool, false],
   }),
 };
 

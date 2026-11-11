@@ -1500,6 +1500,67 @@
     .hunk.h-approved h4 { color: var(--green); } .hunk.h-rejected h4 { color: var(--red); }
     .cmdline { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 6px; padding: 6px 9px; margin: 6px 10px 9px; white-space: pre-wrap; word-break: break-word; }
 
+    /* ---- repository context (protocol 1.5, capability-gated) ---- */
+    .repo { border-bottom: 1px solid var(--border); background: var(--panel); font-size: 11.5px; }
+    .repo[hidden] { display: none; }
+    .repo-line { display: flex; align-items: center; gap: 6px; padding: 3px 9px; min-width: 0; }
+    .repo-sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: var(--mono); }
+    .repo-btn { background: none; border: 1px solid transparent; color: var(--muted); border-radius: 5px; padding: 0 6px; font-size: 12px; line-height: 18px; cursor: pointer; }
+    .repo-btn:hover:not(:disabled) { border-color: var(--border); color: var(--text); }
+    .repo-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .repo-detail { max-height: 140px; overflow-y: auto; padding: 2px 9px 6px; display: flex; flex-direction: column; gap: 6px; }
+    #drillRepo { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    #drillRepo .repo-detail { max-height: 220px; }
+    .repo-files { font-family: var(--mono); font-size: 11px; display: flex; flex-direction: column; }
+    .repo-file { display: flex; gap: 8px; min-width: 0; }
+    .repo-file .code { flex: 0 0 auto; width: 2.4em; color: var(--accent-text); white-space: pre; }
+    .repo-file .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .repo-muted { color: var(--faint); }
+    .repo-pr { border-top: 1px solid var(--border); padding-top: 4px; display: flex; flex-direction: column; gap: 3px; }
+    .repo-pr > .repo-line { padding: 0; }
+    .repo-pr a { color: var(--accent-text); }
+    .repo-checks { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chk { border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: 10.5px; }
+    .chk-pass { color: var(--green); } .chk-fail { color: var(--red); } .chk-pending { color: var(--yellow); }
+    .chk-skipping, .chk-cancel, .chk-other { color: var(--faint); }
+    .repo-checklist summary { cursor: pointer; color: var(--muted); }
+    .repo-check { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+
+    /* ---- saved actions (G0) ---- */
+    .act-sel { max-width: 130px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; }
+    .act-sel:disabled { opacity: .55; }
+    .composer-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .composer-tools .act-sel { max-width: 260px; }
+    .actions-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0; }
+    .action-edit { display: flex; flex-direction: column; gap: 5px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
+    .action-edit input, .action-edit textarea, .draftbox textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; font-family: inherit; }
+    .action-edit input { font-weight: 550; }
+    .action-edit textarea { min-height: 56px; resize: vertical; }
+    .draftbox { max-width: 640px; }
+    .draftbox textarea { width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono); box-sizing: border-box; }
+
+    /* ---- GitHub inbox (G1) ---- */
+    .modal.wide { max-width: 880px; }
+    .inbox-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .inbox-bar select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; }
+    .inbox-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 700px) { .inbox-lanes { grid-template-columns: 1fr; } }
+    .inbox-lane { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+    .inbox-item { text-align: left; display: flex; flex-direction: column; gap: 2px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 9px; color: var(--text); cursor: pointer; font: inherit; }
+    .inbox-item:hover { border-color: var(--faint); }
+    .inbox-item.active { border-color: var(--accent); }
+    .inbox-item .ref { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+    .inbox-item .ttl { font-size: 13px; overflow-wrap: anywhere; }
+    .inbox-item .meta { font-size: 11px; color: var(--faint); }
+    .inbox-detail { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .inbox-detail[hidden] { display: none; }
+    .inbox-detail a { color: var(--accent-text); }
+    .inbox-dbody { display: flex; flex-direction: column; gap: 8px; }
+    .inbox-dtitle { font-weight: 600; overflow-wrap: anywhere; }
+    .inbox-facts { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; }
+    .inbox-facts .k { color: var(--muted); }
+    .inbox-body { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; max-height: 260px; overflow: auto; margin: 0; }
+
     /* ---- raw event-log pane ---- */
     .rawlog { flex: 0 0 220px; overflow-y: auto; background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; display: none; }
     .rawlog.on { display: block; }
@@ -1568,6 +1629,7 @@
     <span class="workspace" id="workspace">no workspace</span>
     <span class="spacer"></span>
     <button class="btn icon ghost" id="treeBtn" title="Grid / tree view" aria-label="Toggle grid or tree view">▦</button>
+    <button class="btn ghost" id="inboxBtn" style="display:none" title="GitHub inbox: review requests and assigned issues">Inbox</button>
     <button class="btn primary" id="spawnBtn">+ Spawn</button>
     <button class="btn icon ghost" id="helpBtn" title="About Menagerie" aria-label="About Menagerie">?</button>
     <button class="btn icon ghost" id="keybarBtn" title="Terminal keys (Esc, Ctrl, arrows…)" aria-label="Toggle terminal key bar">⌨</button>
@@ -1598,6 +1660,7 @@
           <button class="btn icon ghost" id="rawlogBtn" title="Raw event log (d)" aria-label="Toggle raw event log">{}</button>
         </div>
         <div class="instrbar" id="instrumentBar"></div>
+        <div class="repo" id="drillRepo" hidden></div>
         <div class="drill-cols">
           <aside class="drill-rail">
             <div class="sb-title">Sessions</div>
@@ -1608,6 +1671,7 @@
             <div id="permZone" style="display:flex;flex-direction:column;gap:10px;max-height:42%;overflow-y:auto"></div>
             <div class="perm-banner" id="drillPermBanner" style="display:none"></div>
             <div class="composer">
+              <div class="composer-tools"><select id="drillActions" class="act-sel" aria-label="Prepare a saved action"></select></div>
               <textarea id="drillComposer" placeholder="prompt… (Enter to send · Shift+Enter newline)"></textarea>
             </div>
           </div>
@@ -1702,6 +1766,15 @@
           <div class="inline-error" id="addRelayError"></div>
         </div>
         <div>
+          <div class="section-title">Saved actions</div>
+          <div class="hint">Reusable instructions. Preparing one places an editable draft in the session (structured composer, or a copy box for terminal sessions); nothing is sent until you press Send.</div>
+          <div class="hint" id="actionsStoreHint" style="margin-top:4px"></div>
+          <div class="actions-list" id="actionsList"></div>
+          <div class="row"><button class="btn primary" id="saveActionsBtn">Save actions</button><button class="btn" id="resetActionsBtn">Restore defaults</button></div>
+          <div style="height:6px"></div>
+          <div class="inline-error" id="actionsResult"></div>
+        </div>
+        <div>
           <div class="section-title">Past sessions</div>
           <div class="list" id="pastList"></div>
         </div>
@@ -1719,6 +1792,7 @@
       <header><h2>Spawn agent</h2><span class="spacer"></span><button class="btn icon ghost" data-close>✕</button></header>
       <div class="body">
         <div id="spawnParentChip" class="spawn-parent-chip" style="display:none"></div>
+        <div id="spawnHandoffChip" class="spawn-parent-chip" style="display:none"></div>
         <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select>
           <div id="spawnRelayHint" class="combo-hint"><span id="spawnRelayHintText">No relay is connected. </span><button type="button" class="link" id="spawnAddRelayBtn">Add or connect a relay in Settings →</button></div></div>
         <div class="field"><label for="spawnAgentInput">Agent</label>
@@ -1741,6 +1815,21 @@
           </label></div>
         <div class="row"><button class="btn primary" id="doSpawnBtn">Spawn</button></div>
         <div class="inline-error" id="spawnResult"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GitHub inbox (protocol 1.5, github_inbox_v1): shown only when a connected relay advertises it -->
+  <div class="scrim" id="inboxScrim" data-close>
+    <div class="modal wide" role="dialog" aria-label="GitHub inbox">
+      <header><h2>GitHub inbox</h2><span class="spacer"></span><button class="btn icon ghost" data-close aria-label="Close">✕</button></header>
+      <div class="body">
+        <div class="inbox-bar"><select id="inboxRelay" aria-label="Runtime"></select><button class="btn" id="inboxRefreshBtn">↻ Refresh</button><span class="hint" id="inboxStatus" aria-live="polite"></span></div>
+        <div class="inbox-lanes">
+          <div><div class="section-title">Review requested</div><div class="inbox-lane" id="inboxReview"></div></div>
+          <div><div class="section-title">Assigned issues</div><div class="inbox-lane" id="inboxAssigned"></div></div>
+        </div>
+        <div class="inbox-detail" id="inboxDetail" hidden></div>
       </div>
     </div>
   </div>
@@ -1983,6 +2072,7 @@
         if (Array.isArray(saved)) for (const r of saved) if (!relays.some((x) => x.url === r.url)) addRelay(r.url, r.token, r.name);
       } catch (e) { console.warn("rehydrate relays failed", e); }
       rehydrating = false;
+      await loadSavedActions();
       await refreshPastSessions();
     }
     async function persistRelays() {
@@ -2056,7 +2146,7 @@
       ws.addEventListener("close", () => {
         if (relay.gen !== gen || relay.removed) return; // superseded by a newer socket, or relay removed
         if (relay.status === "error") { renderAll(); return; } // auth failure: don't auto-retry
-        relay.status = "connecting"; markRelaySessionsLost(relay); failWaitsForRelay(relay.id); scheduleReconnect(relay); renderAll();
+        relay.status = "connecting"; markRelaySessionsLost(relay); failWaitsForRelay(relay.id); failReadsForRelay(relay.id); scheduleReconnect(relay); renderAll();
       });
       ws.addEventListener("error", () => {});
     }
@@ -2078,7 +2168,7 @@
     function send(relay, obj) { if (relay.ws && relay.ws.readyState === WebSocket.OPEN) relay.ws.send(JSON.stringify(obj)); }
     function removeRelay(id) {
       const i = relays.findIndex((r) => r.id === id); if (i < 0) return;
-      relays[i].removed = true; clearTimeout(relays[i].retryTimer);
+      relays[i].removed = true; clearTimeout(relays[i].retryTimer); failReadsForRelay(id);
       try { if (relays[i].ws) relays[i].ws.close(); } catch {}
       // Tear down this relay's tiles — they can't reconnect once the relay is gone.
       // Snapshot first: destroyTile deletes from `sessions` mid-iteration.
@@ -2158,6 +2248,7 @@
         initAcpState(sess); sessions.set(sess.id, sess); mountTile(sess); writeSessionMeta(sess);
         const task = pendingTask.get(msg.client_id); pendingTask.delete(msg.client_id);
         if (task && sess.transport === "acp") sendPrompt(sess, task);
+        applyHandoffDraft(sess, msg.client_id); // an Inbox draft lands as a draft, never sent
         noteInMemoryOnFirstSession();
       },
       // On (re)connect the relay lists live sessions; (re-)attach each so a full
@@ -2216,9 +2307,14 @@
         renderStreamTile(s);
         if ($("drill").classList.contains("open") && drillSid === s.id) renderDrill(s);
       },
-      error(relay, msg) { handleErrorFrame(relay, msg); },
+      error(relay, msg) { if (!errorForRead(relay, msg)) handleErrorFrame(relay, msg); },
       resume_failed() {},
       waited(relay, msg) { settleWait(msg.wait_id, { session_id: msg.session_id, state: msg.state, timed_out: !!msg.timed_out }); },
+      // Protocol 1.5 reads: each result settles the request that asked for it.
+      git_status_result(relay, msg) { onReadResult(relay, msg); },
+      github_inbox_result(relay, msg) { onReadResult(relay, msg); },
+      session_pr_result(relay, msg) { onReadResult(relay, msg); },
+      github_item_result(relay, msg) { onReadResult(relay, msg); },
     };
     // A replayed permission request (seq -1) is only a live decision if the
     // relay's own tracked status at attach said so; otherwise it is history.
@@ -2297,7 +2393,7 @@
       // A failed spawn never sends a `spawned` reply, so its pendingCwd/pendingTransport
       // entries would leak (the error frame carries no client_id to key off). Spawns
       // are modal — one at a time — so any pending entries here are stale; clear them.
-      pendingCwd.clear(); pendingTransport.clear(); pendingTask.clear();
+      pendingCwd.clear(); pendingTransport.clear(); pendingTask.clear(); pendingDraft.clear();
       notify((msg.code || "error") + ": " + (msg.message || ""), false);
     }
     function handleMessage(relay, msg) {
@@ -2458,6 +2554,7 @@
       markSeen(s);
       drillSid = s.id; document.body.classList.add("drilling");
       $("drill").classList.add("open"); syncSidebarActive();
+      bindComposer(s);
       renderDrill(s);
     }
     // Keep an open drill live: every structured frame and lifecycle event for the
@@ -2475,7 +2572,7 @@
       });
     }
     function closeDrill() {
-      drillSid = null; document.body.classList.remove("drilling");
+      drillSid = null; drillRepoFor = null; document.body.classList.remove("drilling");
       $("drill").classList.remove("open"); $("rawlog").classList.remove("on");
     }
     function composerHasText() { const ta = $("drillComposer"); return ta && ta.value.length > 0; }
@@ -2512,6 +2609,7 @@
       const A = s.acp;
       $("drillTitle").innerHTML = `${escapeHtml(s.agent)} <span class="sub">· ${escapeHtml(s.relayName)}${s.cwd ? " · " + escapeHtml(s.cwd) : ""}</span>`;
       renderInstrumentBar(s);
+      fillDrillRepo(s, false);
       const tr = $("transcript");
       // Follow the tail only if the reader was already at it; a reader scrolled up
       // through history keeps their place across live re-renders.
@@ -2521,6 +2619,7 @@
       for (const it of A.items) tr.appendChild(renderTranscriptRow(it));
       tr.scrollTop = pinned ? tr.scrollHeight : keep;
       renderPermZone(s);
+      fillActionSelect($("drillActions"), s);
       renderDrillRail(s);
       renderRawLog(s);
       syncDrillControls(s);
@@ -2932,6 +3031,7 @@
       // session has a token (a spawn with a Task and no prompt was a silent no-op).
       const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (tr === "pty" && task ? [task] : []);
       holdTask(client_id, tr, task);
+      holdHandoff(client_id);
       const parentId = resolveSpawnParent(relayId); // v1.2: only if a live session on THIS relay
       spawnChildParentId = null;
       send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr, parent_session_id: parentId });
@@ -2962,8 +3062,8 @@
       ti.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendInput(sess, ti.value + "\n"); ti.value = ""; } });
       const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
       sendBtn.addEventListener("click", () => { sendInput(sess, ti.value + "\n"); ti.value = ""; ti.focus(); });
-      bar.append(ti, sendBtn);
-      tile.append(head, termEl, bar); $("grid").appendChild(tile);
+      bar.append(actionSelect(sess), ti, sendBtn);
+      tile.append(head, repoMount(sess), termEl, bar); $("grid").appendChild(tile);
       const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: true, scrollback: 2000, theme: termTheme(), screenReaderMode: true });
       term.open(termEl); term.onData((d) => sendInput(sess, d));
       Object.assign(sess, { term, tile, termEl, dot, ti, sendBtn, reattachBtn: reattach });
@@ -3207,8 +3307,8 @@
       ti.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendPrompt(sess, ti.value); ti.value = ""; } });
       const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
       sendBtn.addEventListener("click", () => { sendPrompt(sess, ti.value); ti.value = ""; ti.focus(); });
-      bar.append(ti, sendBtn);
-      tile.append(head, streamEl, bar); $("grid").appendChild(tile);
+      bar.append(actionSelect(sess), ti, sendBtn);
+      tile.append(head, repoMount(sess), streamEl, bar); $("grid").appendChild(tile);
       Object.assign(sess, { tile, streamEl, dot, ti, sendBtn, cancelBtn: cancel, reattachBtn: reattach });
       syncTileControls(sess);
       sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
@@ -3561,7 +3661,7 @@
     // v1.2: the spawn dialog can be scoped to a parent (spawn-child). Transient —
     // cleared when the plain + Spawn opens it, and after a spawn is sent.
     let spawnChildParentId = null;
-    function openSpawnDialog() { spawnChildParentId = null; openModal("spawnScrim"); }
+    function openSpawnDialog() { spawnChildParentId = null; spawnHandoff = null; openModal("spawnScrim"); }
     function resolveSpawnParent(relayId) {
       const p = spawnChildParentId && sessions.get(spawnChildParentId);
       return p && p.relayId === relayId ? spawnChildParentId : undefined;
@@ -3569,7 +3669,7 @@
     function openSpawnChild(sess) {
       const relay = relays.find((r) => r.id === sess.relayId);
       if (!relay || !(relay.hello && relay.hello.hosts_children)) return; // relay can't host children
-      spawnChildParentId = sess.id;
+      spawnChildParentId = sess.id; spawnHandoff = null;
       openModal("spawnScrim");
       $("spawnRelay").value = sess.relayId; renderAgentOptions();
       if (sess.cwd) $("spawnCwd").value = sess.cwd; // inherit the parent's cwd (spec Q2)
@@ -3587,6 +3687,7 @@
       $("spawnRelayHintText").textContent = none ? "No relay is connected. " : "";
       $("spawnAddRelayBtn").textContent = none ? "Add or connect a relay in Settings →" : "Add another relay →";
       renderSpawnParentChip();
+      renderSpawnHandoff();
     }
     // The "child of: X" chip only shows when the parent is a live session on the
     // CURRENTLY-selected relay — otherwise the spawn would omit parent_session_id
@@ -3772,6 +3873,7 @@
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
     function renderAll() {
       renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid();
+      syncRepoRows(); syncActionControls(); syncInboxButton();
       if (NK) { try { NK.title(sessions.size ? `Menagerie — ${sessions.size} session${sessions.size === 1 ? "" : "s"}` : "Menagerie"); } catch {} }
     }
 
@@ -3799,7 +3901,7 @@
     function closeWorkspaceOverlay() { const ov = $("wsOverlay"); ov.classList.remove("open", "booting"); ov.setAttribute("aria-busy", "false"); }
     function wsError(t) { $("wsErr").textContent = t; }
 
-    function openModal(id) { closeDrawer(); $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") refreshPastSessions(); }
+    function openModal(id) { closeDrawer(); $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") { refreshPastSessions(); renderActionSettings(); $("actionsResult").textContent = ""; } }
     function closeModal(id) { $(id).classList.remove("open"); }
     function closeAllModals() { document.querySelectorAll(".scrim").forEach((s) => s.classList.remove("open")); }
     function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")) || $("wsOverlay").classList.contains("open"); }
@@ -3968,6 +4070,9 @@
       if (target) target.focus();
     });
     $("spawnBtn").addEventListener("click", openSpawnDialog);
+    $("inboxBtn").addEventListener("click", openInbox);
+    $("inboxRefreshBtn").addEventListener("click", refreshInbox);
+    $("inboxRelay").addEventListener("change", (e) => { resetInbox(e.target.value); renderInbox(); });
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("helpTourBtn").addEventListener("click", () => { closeModal("helpScrim"); setTimeout(() => showTour({ force: true }), 60); });
     $("themeBtn").addEventListener("click", toggleTheme);
@@ -4132,6 +4237,9 @@
 
     // Drill-in wiring.
     $("drillBack").addEventListener("click", closeDrill);
+    $("drillActions").addEventListener("change", (e) => { const id = e.target.value; e.target.value = ""; const s = sessions.get(drillSid); if (id && s) prepareAction(s, id); });
+    $("saveActionsBtn").addEventListener("click", saveActionEdits);
+    $("resetActionsBtn").addEventListener("click", restoreDefaultActions);
     $("drillCancelBtn").addEventListener("click", () => { const s = sessions.get(drillSid); if (s) cancelTurn(s); });
     $("drillReattachBtn").addEventListener("click", () => { const s = sessions.get(drillSid); if (s) reattachSession(s); });
     $("rawlogBtn").addEventListener("click", () => { const el = $("rawlog"); el.classList.toggle("on"); const s = sessions.get(drillSid); if (s) renderRawLog(s); });
@@ -4139,9 +4247,697 @@
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         const s = sessions.get(drillSid);
-        if (s && e.target.value.trim()) { sendPrompt(s, e.target.value.trim()); e.target.value = ""; }
+        // A prompt sent while a decision is pending would be refused (session_blocked);
+        // keep the draft and point at the decision instead.
+        if (s && s.acp && s.acp.pendingPerm) { flashComposer(); return; }
+        if (s && e.target.value.trim()) { sendPrompt(s, e.target.value.trim()); e.target.value = ""; s.draft = ""; }
       }
     });
+
+    // ===== repository + GitHub context (protocol 1.5, capability-gated) =====
+    // Read-only. A request goes only to a relay whose hello.capabilities names
+    // it; a relay without the name shows nothing new. Refresh is always a click:
+    // the only timer here is each request's reply deadline, never a poll. Reads
+    // never touch session status, control or the `done` badge (no markSeen, no
+    // setSessionStatus). Every repository or GitHub string reaches the DOM
+    // through textContent or a text node, never innerHTML.
+    const CAP_GIT = "session_git_v1", CAP_PR = "session_pr_v1";
+    const READ_TIMEOUT_MS = 30000;
+    const READ_PREFIX = { git_status: "g", session_pr: "p", github_inbox: "i", github_item: "i" };
+    const pendingReads = new Map(); // request_id → { relayId, sessionId, onResult, timer }
+    let readSeq = 0;
+
+    // hello.capabilities is kept on relay.hello (set by the hello handler).
+    function relayCaps(relay) {
+      const c = relay && relay.hello && relay.hello.capabilities;
+      return Array.isArray(c) ? c.filter((x) => typeof x === "string") : [];
+    }
+    function relayAdvertises(relay, name) { return relayCaps(relay).includes(name); }
+    function relayOf(s) { return (s && relays.find((r) => r.id === s.relayId)) || null; }
+    function sessionAdvertises(s, name) { return !!s && !s.replay && relayAdvertises(relayOf(s), name); }
+
+    function newRequestId(type) { readSeq += 1; return `${READ_PREFIX[type] || "r"}-${readSeq}-${crypto.randomUUID().slice(0, 8)}`; }
+    // Send one read; `onResult` runs exactly once, with the relay's result or a
+    // local state (timeout, not_connected, invalid_token) carrying no data.
+    function sendRead(relay, frame, sessionId, onResult) {
+      const request_id = newRequestId(frame.type);
+      const timer = setTimeout(() => settleRead(request_id, { state: "timeout", local: true }), READ_TIMEOUT_MS);
+      pendingReads.set(request_id, { relayId: relay.id, sessionId: sessionId || null, onResult, timer });
+      send(relay, { ...frame, request_id });
+      return request_id;
+    }
+    function settleRead(requestId, msg) {
+      const p = pendingReads.get(requestId); if (!p) return false;
+      pendingReads.delete(requestId); clearTimeout(p.timer);
+      try { p.onResult(msg); } catch (e) { console.warn("read result render failed", e); }
+      return true;
+    }
+    // A result counts only from the relay (and session) the request went to; a
+    // late or foreign request_id is dropped.
+    function onReadResult(relay, msg) {
+      const p = typeof msg.request_id === "string" ? pendingReads.get(msg.request_id) : null;
+      if (!p || p.relayId !== relay.id) return;
+      if (p.sessionId && msg.session_id !== p.sessionId) return;
+      settleRead(msg.request_id, msg);
+    }
+    function failReadsForRelay(relayId) {
+      for (const [id, p] of pendingReads) if (p.relayId === relayId) settleRead(id, { state: "not_connected", local: true });
+    }
+    // An error frame that belongs to a read ends that read with no data. It is
+    // handled here, before the generic path, because the generic path clears the
+    // pending-spawn maps (and with them an Inbox handoff draft) on any error.
+    //  - an error echoing a pending read's request_id settles exactly that read;
+    //  - error{invalid_token} for a session with reads in flight settles them and
+    //    still raises one toast, since a prompt or input may have failed with it too.
+    function errorForRead(relay, msg) {
+      const p = typeof msg.request_id === "string" ? pendingReads.get(msg.request_id) : null;
+      if (p && p.relayId === relay.id) { settleRead(msg.request_id, { state: "unavailable", local: true }); return true; }
+      if (msg.code !== "invalid_token" || !msg.session_id) return false;
+      let hit = false;
+      for (const [id, q] of pendingReads) {
+        if (q.relayId === relay.id && q.sessionId === msg.session_id) { settleRead(id, { state: "invalid_token", local: true }); hit = true; }
+      }
+      if (hit) notify("invalid_token: " + (msg.message || ""), false);
+      return hit;
+    }
+
+    const READ_STATE_TEXT = {
+      not_repository: "Not a Git repository.",
+      no_directory: "The runtime recorded no directory for this session.",
+      unavailable: "Repository status is unavailable.",
+      timeout: "Timed out: no reply from the runtime.",
+      busy: "The runtime is busy with other reads; try again shortly.",
+      gh_missing: "GitHub CLI (gh) is not installed on the runtime machine.",
+      not_authenticated: "gh is not logged in on the runtime machine (run gh auth login there).",
+      rate_limited: "GitHub rate limit reached; try again later.",
+      no_remote: "This repository has no GitHub remote.",
+      no_pr: "No pull request for this branch.",
+      not_found: "Not found on GitHub.",
+      invalid_token: "The session token was refused; re-attach, then refresh.",
+      not_connected: "The relay is not connected.",
+    };
+    function readStateText(state) { return READ_STATE_TEXT[state] || `Unavailable (state: ${shortStr(state || "none", 40)}).`; }
+    function shortStr(v, n) { const t = String(v); return t.length > n ? t.slice(0, n - 1) + "…" : t; }
+    const count = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+
+    // ---- per-session Git panel (session_git_v1) ----
+    function repoState(s) { return s.repo || (s.repo = { git: null, gitLoading: false, pr: null, prLoading: false, open: false, checksOpen: false }); }
+    // Why a read cannot be sent for this session right now, or null.
+    function repoReadBlock(s) {
+      if (s.replay) return "replay only";
+      const why = { exited: "session exited", lost: "connection lost", taken: "another client took this session" }[s.status];
+      if (why) return why;
+      const relay = relayOf(s);
+      return (relay && relay.status === "connected" && s.token) ? null : "relay not connected";
+    }
+    function refreshGit(s) {
+      const R = repoState(s);
+      if (R.gitLoading || repoReadBlock(s) || !sessionAdvertises(s, CAP_GIT)) return;
+      R.gitLoading = true; renderRepo(s);
+      sendRead(relayOf(s), { type: "git_status", session_id: s.id, session_token: s.token }, s.id, (msg) => {
+        R.gitLoading = false; R.git = msg; renderRepo(s);
+      });
+    }
+    function repoMount(s) {
+      const el = document.createElement("div"); el.className = "repo";
+      s.repoEl = el; fillRepo(el, s);
+      return el;
+    }
+    function renderRepo(s) {
+      if (s.repoEl) fillRepo(s.repoEl, s);
+      if (s.repoEl && s.term) setTimeout(() => fitTile(s), 30); // the panel height changed under the terminal
+      fillDrillRepo(s, true);
+    }
+    // The drill re-renders on every streamed frame; rebuild its repository
+    // panel only when the drilled session or that session's panel changed.
+    let drillRepoFor = null;
+    function fillDrillRepo(s, force) {
+      if (drillSid !== s.id || !drillOpen()) return;
+      if (!force && drillRepoFor === s.id + "|" + repoKey(s)) return;
+      drillRepoFor = s.id + "|" + repoKey(s);
+      fillRepo($("drillRepo"), s);
+    }
+    function fillRepo(el, s) {
+      el.replaceChildren();
+      const show = sessionAdvertises(s, CAP_GIT);
+      el.hidden = !show;
+      if (!show) return;
+      const R = repoState(s);
+      el.appendChild(repoLine(s, R));
+      if (R.open) el.appendChild(repoDetail(s, R));
+    }
+    function repoBtn(text, title, fn) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "repo-btn";
+      b.textContent = text; b.title = title; b.setAttribute("aria-label", title);
+      b.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+      return b;
+    }
+    function refreshBtn(s, loading, fn, what) {
+      const why = repoReadBlock(s);
+      const b = repoBtn(loading ? "…" : "↻", why ? `${what} (unavailable: ${why})` : what, fn);
+      b.disabled = !!why || loading;
+      return b;
+    }
+    function repoLine(s, R) {
+      const line = document.createElement("div"); line.className = "repo-line";
+      const toggle = repoBtn(R.open ? "▾" : "▸", R.open ? "Hide repository details" : "Show repository details", () => { R.open = !R.open; renderRepo(s); });
+      toggle.setAttribute("aria-expanded", R.open ? "true" : "false");
+      const sum = document.createElement("span"); sum.className = "repo-sum";
+      sum.textContent = gitSummary(R); sum.title = sum.textContent;
+      line.append(toggle, sum, refreshBtn(s, R.gitLoading, () => refreshGit(s), "Read Git status"));
+      return line;
+    }
+    function gitSummary(R) {
+      const g = R.git;
+      if (R.gitLoading && !g) return "⎇ reading repository…";
+      if (!g) return "⎇ repository · press ↻ to read Git status";
+      if (g.state !== "ok") return "⎇ " + readStateText(g.state);
+      return "⎇ " + [gitHeadText(g), gitUpstreamText(g), gitChangesText(g)].join(" · ");
+    }
+    function gitHeadText(g) {
+      if (g.detached) return "detached at " + shortStr(g.head || "unknown", 14);
+      if (g.unborn) return (g.branch ? shortStr(g.branch, 60) + ", " : "") + "no commits yet";
+      return shortStr(g.branch || "unknown branch", 60);
+    }
+    function gitUpstreamText(g) {
+      if (!g.upstream) return "no upstream";
+      return `${shortStr(g.upstream, 60)} ↑${count(g.ahead)} ↓${count(g.behind)}`;
+    }
+    function gitChangesText(g) {
+      const n = Number.isFinite(g.files_total) ? count(g.files_total) : (Array.isArray(g.files) ? g.files.length : 0);
+      return n === 0 ? "clean" : `${n} changed`;
+    }
+    function repoDetail(s, R) {
+      const box = document.createElement("div"); box.className = "repo-detail";
+      if (R.git && R.git.state === "ok") box.appendChild(gitFileList(R.git));
+      else { const h = document.createElement("div"); h.className = "repo-muted"; h.textContent = R.git ? readStateText(R.git.state) : "Press ↻ to read Git status."; box.appendChild(h); }
+      if (sessionAdvertises(s, CAP_PR)) box.appendChild(prSection(s, R));
+      return box;
+    }
+    const GIT_LETTER = { ".": "unchanged", M: "modified", A: "added", D: "deleted", R: "renamed", C: "copied", U: "unmerged", "?": "untracked", T: "type changed", "!": "ignored" };
+    const statusLetter = (v) => (typeof v === "string" && v ? v.slice(0, 1) : "?");
+    function gitFileList(g) {
+      const files = Array.isArray(g.files) ? g.files.slice(0, 200) : [];
+      const list = document.createElement("div"); list.className = "repo-files";
+      if (!files.length) { list.textContent = "Working tree clean."; return list; }
+      for (const f of files) list.appendChild(gitFileRow(f && typeof f === "object" ? f : {}));
+      const total = Math.max(count(g.files_total), files.length);
+      if (g.truncated || total > files.length) {
+        const more = document.createElement("div"); more.className = "repo-muted";
+        more.textContent = `Showing ${files.length} of ${total} changed files.`;
+        list.appendChild(more);
+      }
+      return list;
+    }
+    function gitFileRow(f) {
+      const row = document.createElement("div"); row.className = "repo-file";
+      const ix = statusLetter(f.index), wt = statusLetter(f.worktree);
+      const code = document.createElement("span"); code.className = "code";
+      code.textContent = ix + wt;
+      code.title = `staged: ${GIT_LETTER[ix] || ix} · worktree: ${GIT_LETTER[wt] || wt}`;
+      const path = document.createElement("span"); path.className = "path";
+      path.textContent = String(f.path || ""); path.title = path.textContent;
+      row.append(code, path);
+      return row;
+    }
+    // Cheap visibility key; renderAll re-renders a session's panel only when it
+    // changes (a relay gains or loses the capability, or reads become possible).
+    function repoKey(s) { return [sessionAdvertises(s, CAP_GIT), sessionAdvertises(s, CAP_PR), repoReadBlock(s) || ""].join("|"); }
+    function syncRepoRows() {
+      for (const s of sessions.values()) {
+        if (!s.repoEl) continue;
+        const key = repoKey(s);
+        if (s.repoKey !== key) { s.repoKey = key; renderRepo(s); }
+      }
+    }
+
+    // ===== saved actions (G0) =========================================
+    // Reusable instructions. Preparing one NEVER sends: a structured session
+    // gets it appended to its composer as an editable draft; a PTY session gets
+    // an editable draft box with Copy, for deliberate terminal input. The user's
+    // own Send is the only path to the agent. A session waiting on a decision
+    // cannot receive one, so a saved instruction is never read as an approval.
+    // Edits persist through the workspace store (FS: folder or naklios.fs) at
+    // .menagerie/actions.json; in-memory mode keeps them for this tab only.
+    const ACTIONS_FILE = "actions.json";
+    const ACTION_LABEL_MAX = 60, ACTION_TEXT_MAX = 4000;
+    const DEFAULT_ACTIONS = [
+      { id: "review", label: "Review", text: "Review the uncommitted changes and the commits on this branch that are not on its upstream. List bugs, risky changes and missing tests with file and line references. Do not change any files." },
+      { id: "commit", label: "Commit", text: "Commit the current changes. Group them into logical commits with clear messages, and show me the commit list. Do not push." },
+      { id: "commit_push", label: "Commit and push", text: "Commit the current changes with clear messages, then push this branch to its upstream. If the push is rejected, stop and tell me why. Do not force-push." },
+      { id: "pull_request", label: "Prepare a pull request", text: "Prepare a pull request for this branch: a title, what changed and why, how it was tested, and open questions. Show me the draft; do not open the pull request until I confirm." },
+      { id: "resolve_conflicts", label: "Resolve conflicts", text: "Resolve the merge conflicts in this repository. Keep the intent of both sides, explain each resolution, and run the relevant tests. Do not commit until I confirm." },
+      { id: "recap", label: "Recap", text: "Recap this session: what you changed, what you verified and how, what is left, and anything you need from me." },
+      // Handoff templates, used by Inbox → Start session (not offered per session).
+      { id: "work_issue", label: "Work on issue", handoff: true, text: "Work on GitHub issue {ref}: {title}\n{url}\n\nIssue description:\n{body}" },
+      { id: "review_pr", label: "Review PR", handoff: true, text: "Review pull request {ref}: {title}\n{url}\nHead branch: {head}\n\nPull request description:\n{body}\n\nReview only. Do not push to the pull request's branch." },
+    ];
+    let savedActions = DEFAULT_ACTIONS.map((a) => ({ ...a }));
+    let actionsVersion = 1; // bumps on every load/save, so per-session menus rebuild
+
+    const validAction = (a) => !!a && typeof a.id === "string" && typeof a.label === "string" && a.label.trim() !== "" && typeof a.text === "string";
+    // Merge a stored document onto the defaults by id: a known id takes its saved
+    // label and text; an unknown id or a malformed entry is ignored.
+    function parseSavedActions(doc) {
+      if (!doc || !Array.isArray(doc.actions)) return null;
+      const byId = new Map(doc.actions.filter(validAction).map((a) => [a.id, a]));
+      return DEFAULT_ACTIONS.map((d) => {
+        const a = byId.get(d.id);
+        return a ? { ...d, label: a.label.trim().slice(0, ACTION_LABEL_MAX), text: a.text.slice(0, ACTION_TEXT_MAX) } : { ...d };
+      });
+    }
+    async function loadSavedActions() {
+      if (!FS.ok()) return;
+      let doc = null;
+      try { doc = await FS.readJSON([MENAGERIE_DIR, ACTIONS_FILE]); } catch (e) { console.warn("read saved actions failed", e); }
+      // A workspace without actions.json starts from the defaults, so edits made
+      // in another folder never carry over (and are never saved into this one).
+      savedActions = parseSavedActions(doc) || DEFAULT_ACTIONS.map((a) => ({ ...a }));
+      actionsVersion++;
+      renderActionSettings(); syncActionControls();
+    }
+    async function persistSavedActions() {
+      if (!FS.ok()) return false;
+      await FS.writeJSON([MENAGERIE_DIR, ACTIONS_FILE], { version: 1, actions: savedActions.map(({ id, label, text }) => ({ id, label, text })) });
+      return true;
+    }
+    function actionsStoreText() {
+      return FS.ok() ? `Stored in ${FS.label} at ${MENAGERIE_DIR}/${ACTIONS_FILE}.`
+        : "In-memory workspace: edits last only until this tab closes. Pick a folder under Workspace to keep them.";
+    }
+    function actionEditor(a) {
+      const box = document.createElement("div"); box.className = "action-edit"; box.dataset.id = a.id;
+      const label = document.createElement("input"); label.className = "act-label"; label.maxLength = ACTION_LABEL_MAX; label.value = a.label;
+      label.setAttribute("aria-label", "Action name");
+      const text = document.createElement("textarea"); text.className = "act-text"; text.maxLength = ACTION_TEXT_MAX; text.value = a.text;
+      text.setAttribute("aria-label", a.label + " instruction text");
+      box.append(label, text);
+      if (a.handoff) {
+        const h = document.createElement("div"); h.className = "hint";
+        h.textContent = "Used by Inbox → Start session. Placeholders: {ref} {title} {url} {body} {head}.";
+        box.appendChild(h);
+      }
+      return box;
+    }
+    function renderActionSettings() {
+      const list = $("actionsList"); if (!list) return;
+      list.replaceChildren(...savedActions.map(actionEditor));
+      $("actionsStoreHint").textContent = actionsStoreText();
+    }
+    function readActionEditors() {
+      return savedActions.map((a) => {
+        const box = $("actionsList").querySelector(`.action-edit[data-id="${a.id}"]`);
+        if (!box) return { ...a };
+        const label = box.querySelector(".act-label").value.trim().slice(0, ACTION_LABEL_MAX);
+        return { ...a, label: label || a.label, text: box.querySelector(".act-text").value.slice(0, ACTION_TEXT_MAX) };
+      });
+    }
+    function showActionsResult(text, ok) { const el = $("actionsResult"); el.textContent = text; el.className = ok ? "inline-ok" : "inline-error"; }
+    async function commitActions(next, verb) {
+      savedActions = next; actionsVersion++;
+      syncActionControls(); renderActionSettings();
+      try {
+        const wrote = await persistSavedActions();
+        showActionsResult(wrote ? `${verb}: ${actionsStoreText()}` : `${verb} for this tab only (in-memory workspace; nothing written to disk).`, true);
+      } catch (e) { showActionsResult("Could not save actions: " + ((e && e.message) || "write failed"), false); }
+    }
+    function saveActionEdits() { return commitActions(readActionEditors(), "Saved"); }
+    function restoreDefaultActions() { return commitActions(DEFAULT_ACTIONS.map((a) => ({ ...a })), "Defaults restored"); }
+
+    // Why this session cannot receive a saved action, or null.
+    function actionBlockReason(s) {
+      if (!s || s.replay) return "replay only";
+      const why = { exited: "session exited", lost: "connection lost", taken: "taken by another client" }[s.status];
+      if (why) return why;
+      if (s.status === "needs_input" || (s.acp && s.acp.pendingPerm)) return "waiting on a decision";
+      return null;
+    }
+    function fillActionSelect(sel, s) {
+      const why = actionBlockReason(s);
+      const key = actionsVersion + "|" + (why || "");
+      if (sel.dataset.key === key) return;
+      sel.dataset.key = key;
+      sel.replaceChildren(new Option(why ? "Actions: " + why : "Actions…", ""));
+      for (const a of savedActions) if (!a.handoff) sel.appendChild(new Option(a.label, a.id));
+      sel.disabled = !!why;
+      sel.title = why ? `Saved actions are unavailable: ${why}. A saved instruction is never used as an approval answer.`
+        : "Prepare a saved action as an editable draft. Nothing is sent until you press Send.";
+    }
+    function actionSelect(s) {
+      const sel = document.createElement("select"); sel.className = "act-sel"; sel.setAttribute("aria-label", "Prepare a saved action");
+      sel.addEventListener("click", (e) => e.stopPropagation());
+      sel.addEventListener("change", () => { const id = sel.value; sel.value = ""; if (id) prepareAction(s, id); });
+      s.actSel = sel; fillActionSelect(sel, s);
+      return sel;
+    }
+    function syncActionControls() {
+      for (const s of sessions.values()) if (s.actSel) fillActionSelect(s.actSel, s);
+      const ds = drillSid && sessions.get(drillSid);
+      if (ds) fillActionSelect($("drillActions"), ds);
+    }
+    function prepareAction(s, id) {
+      const a = savedActions.find((x) => x.id === id && !x.handoff);
+      if (!a || !s) return false;
+      const why = actionBlockReason(s);
+      if (why) { toast(`${a.label} was not prepared: ${why}.`, false); return false; }
+      placeDraft(s, a.text);
+      return true;
+    }
+    // Append on a new line, so an existing draft is kept, never overwritten.
+    function appendDraft(prev, text) { return prev && prev.trim() ? prev.replace(/\s+$/, "") + "\n" + text : text; }
+    function placeDraft(s, text) {
+      if (s.transport === "acp") placeComposerDraft(s, text);
+      else openPtyDraft(s, text);
+    }
+    // The drill composer is shared by every structured session, so its text is
+    // kept per session: switching sessions stashes one draft and loads the other.
+    let composerSid = null;
+    function bindComposer(s) {
+      if (composerSid === s.id) return;
+      const ta = $("drillComposer");
+      const prev = composerSid && sessions.get(composerSid);
+      if (prev) prev.draft = ta.value;
+      ta.value = s.draft || "";
+      composerSid = s.id;
+    }
+    function placeComposerDraft(s, text) {
+      if (drillSid !== s.id || !drillOpen()) openDrill(s);
+      const ta = $("drillComposer");
+      ta.value = appendDraft(ta.value, text); s.draft = ta.value;
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+      flashComposer();
+    }
+    // PTY: an editable draft box with Copy. Nothing is typed into the terminal.
+    function openPtyDraft(s, text) {
+      s.ptyDraft = appendDraft(s.ptyDraft || "", text);
+      const old = $("ptyDraftScrim"); if (old) old.remove();
+      const scrim = document.createElement("div"); scrim.className = "scrim open"; scrim.id = "ptyDraftScrim"; scrim.style.zIndex = "120";
+      scrim.innerHTML = `<div class="modal draftbox" role="dialog" aria-modal="true" aria-label="Draft for terminal session">
+        <header><h2></h2><span class="spacer"></span><button class="btn icon ghost" data-x aria-label="Close">✕</button></header>
+        <div class="body">
+          <p class="hint">Edit the draft, then copy it and paste it into the terminal yourself. Nothing is typed into the session for you.</p>
+          <textarea aria-label="Draft text"></textarea>
+          <div class="row" style="justify-content:flex-end"><button class="btn" data-clear>Clear</button><button class="btn primary copybtn-draft">Copy</button></div>
+        </div></div>`;
+      scrim.querySelector("h2").textContent = "Draft for " + s.agent;
+      const ta = scrim.querySelector("textarea"); ta.value = s.ptyDraft;
+      ta.addEventListener("input", () => { s.ptyDraft = ta.value; });
+      scrim.querySelector("[data-clear]").addEventListener("click", () => { ta.value = ""; s.ptyDraft = ""; ta.focus(); });
+      const copy = scrim.querySelector(".copybtn-draft");
+      copy.addEventListener("click", () => copyText(ta.value, copy));
+      scrim.addEventListener("click", (e) => { if (e.target === scrim || e.target.hasAttribute("data-x")) scrim.remove(); });
+      document.body.appendChild(scrim);
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+
+    // ===== GitHub inbox + handoff (G1, github_inbox_v1) ================
+    // Two lanes read through the runtime's own `gh` login: review requests and
+    // assigned issues. Refresh is a button (GitHub's search API allows 30
+    // requests a minute); nothing polls. Picking an item fetches its detail,
+    // shown as plain text. "Start session" opens the existing Spawn dialog and
+    // carries a draft that lands in the new session WITHOUT being sent; the
+    // user presses Spawn, then Send. There is no push action.
+    const CAP_INBOX = "github_inbox_v1";
+    const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+    // Sendable: advertised AND registered (these reads need registration authority).
+    function hasCap(relay, name) { return !!relay && relay.status === "connected" && relayAdvertises(relay, name); }
+    // Only https links become anchors; anything else renders as plain text.
+    function safeHref(u) { return typeof u === "string" && /^https:\/\/\S+$/i.test(u) ? u : null; }
+    function extLink(text, url) {
+      const href = safeHref(url);
+      if (!href) { const sp = document.createElement("span"); sp.textContent = text; return sp; }
+      const a = document.createElement("a"); a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = text;
+      return a;
+    }
+
+    const inbox = { gen: 0, relayId: null, result: null, loading: false, at: 0, sel: null, item: null, itemLoading: false };
+    function inboxRelays() { return relays.filter((r) => hasCap(r, CAP_INBOX)); }
+    function syncInboxButton() { $("inboxBtn").style.display = inboxRelays().length ? "" : "none"; }
+    function resetInbox(relayId) { Object.assign(inbox, { gen: inbox.gen + 1, relayId, result: null, loading: false, at: 0, sel: null, item: null, itemLoading: false }); }
+    function openInbox() { openModal("inboxScrim"); renderInboxRelays(); renderInbox(); }
+    function renderInboxRelays() {
+      const sel = $("inboxRelay"), list = inboxRelays();
+      if (!list.some((r) => r.id === inbox.relayId)) resetInbox(list.length ? list[0].id : null);
+      sel.replaceChildren(...list.map((r) => new Option(r.name, r.id)));
+      sel.value = inbox.relayId || "";
+      sel.style.display = list.length > 1 ? "" : "none";
+    }
+    function refreshInbox() {
+      const relay = relays.find((r) => r.id === inbox.relayId);
+      if (!hasCap(relay, CAP_INBOX) || inbox.loading) return;
+      inbox.loading = true; renderInbox();
+      const gen = inbox.gen;
+      sendRead(relay, { type: "github_inbox" }, null, (msg) => {
+        if (gen !== inbox.gen) return;
+        inbox.loading = false; inbox.result = msg; inbox.at = Date.now(); renderInbox();
+      });
+    }
+    function renderInbox() {
+      $("inboxRefreshBtn").disabled = inbox.loading || !inbox.relayId;
+      $("inboxStatus").textContent = inboxStatusText();
+      const ok = !!inbox.result && inbox.result.state === "ok";
+      fillLane($("inboxReview"), ok ? inbox.result.review_requested : null, "No pull requests are waiting for your review.");
+      fillLane($("inboxAssigned"), ok ? inbox.result.assigned : null, "No open issues are assigned to you.");
+      renderInboxDetail();
+    }
+    function inboxStatusText() {
+      if (!inbox.relayId) return "No connected runtime offers the GitHub inbox.";
+      if (inbox.loading) return "Loading…";
+      const r = inbox.result;
+      if (!r) return "Press Refresh to load your inbox. It does not refresh on its own.";
+      if (r.state !== "ok") return readStateText(r.state);
+      return `Updated ${new Date(inbox.at).toLocaleTimeString()}` + (r.truncated ? " · each list is cut to 50 items" : "");
+    }
+    const validRef = (it) => !!it && (it.kind === "pr" || it.kind === "issue") && typeof it.repo === "string" && REPO_RE.test(it.repo) && Number.isInteger(it.number) && it.number > 0;
+    const refKey = (it) => `${it.kind}:${it.repo}#${it.number}`;
+    function fillLane(el, items, emptyText) {
+      el.replaceChildren();
+      if (!Array.isArray(items)) return;
+      const valid = items.filter(validRef).slice(0, 50);
+      if (!valid.length) { const e = document.createElement("div"); e.className = "hint"; e.textContent = emptyText; el.appendChild(e); return; }
+      for (const it of valid) el.appendChild(inboxRow(it));
+    }
+    function inboxRow(it) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "inbox-item";
+      if (inbox.sel && refKey(inbox.sel) === refKey(it)) b.classList.add("active");
+      const ref = document.createElement("span"); ref.className = "ref"; ref.textContent = `${it.repo}#${it.number}`;
+      const ttl = document.createElement("span"); ttl.className = "ttl"; ttl.textContent = shortStr(it.title || "(untitled)", 200);
+      const meta = document.createElement("span"); meta.className = "meta"; meta.textContent = inboxMeta(it);
+      b.append(ref, ttl, meta);
+      b.addEventListener("click", () => selectInboxItem(it));
+      return b;
+    }
+    const labelName = (l) => (typeof l === "string" ? l : String((l && l.name) || ""));
+    function fmtDate(v) { const t = Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleDateString() : shortStr(v, 24); }
+    function inboxMeta(it) {
+      const bits = [];
+      if (it.author) bits.push("by " + shortStr(it.author, 40));
+      if (it.updated_at) bits.push("updated " + fmtDate(it.updated_at));
+      if (it.draft) bits.push("draft");
+      if (Array.isArray(it.labels) && it.labels.length) bits.push(it.labels.slice(0, 4).map((l) => shortStr(labelName(l), 24)).join(", "));
+      return bits.join(" · ");
+    }
+    function selectInboxItem(it) {
+      const relay = relays.find((r) => r.id === inbox.relayId);
+      if (!hasCap(relay, CAP_INBOX) || !validRef(it)) return;
+      inbox.sel = { kind: it.kind, repo: it.repo, number: it.number, url: it.url };
+      inbox.item = null; inbox.itemLoading = true; renderInbox();
+      const key = refKey(it), gen = inbox.gen;
+      sendRead(relay, { type: "github_item", kind: it.kind, repo: it.repo, number: it.number }, null, (msg) => {
+        if (gen !== inbox.gen || !inbox.sel || refKey(inbox.sel) !== key) return;
+        // The item must be the one asked for, or the header and the draft would disagree.
+        if (msg.state === "ok" && !(validRef(msg.item) && refKey(msg.item) === key)) msg = { state: "unavailable", local: true };
+        inbox.itemLoading = false; inbox.item = msg; renderInbox();
+      });
+    }
+    function renderInboxDetail() {
+      const el = $("inboxDetail"); el.replaceChildren();
+      el.hidden = !inbox.sel;
+      if (!inbox.sel) return;
+      const head = document.createElement("div");
+      const ref = document.createElement("strong"); ref.textContent = `${inbox.sel.repo}#${inbox.sel.number}`;
+      head.append(ref, document.createTextNode(" · "), extLink("open on GitHub ↗", inbox.sel.url));
+      el.append(head, inboxDetailBody());
+    }
+    function inboxDetailBody() {
+      const r = inbox.item;
+      const box = document.createElement("div"); box.className = "hint";
+      if (inbox.itemLoading || !r) { box.textContent = inbox.itemLoading ? "Loading…" : ""; return box; }
+      if (r.state !== "ok") { box.textContent = readStateText(r.state); return box; }
+      if (!validRef(r.item)) { box.textContent = readStateText("unavailable"); return box; }
+      box.className = "inbox-dbody";
+      box.appendChild(inboxItemHeader(r.item));
+      if (r.item.kind === "pr") box.appendChild(prFacts(r.item));
+      box.append(bodyBlock(r.item), handoffRow(r.item));
+      return box;
+    }
+    function inboxItemHeader(item) {
+      const wrap = document.createElement("div");
+      const title = document.createElement("div"); title.className = "inbox-dtitle"; title.textContent = shortStr(item.title || "(untitled)", 300);
+      const meta = document.createElement("div"); meta.className = "hint";
+      const bits = [item.kind === "pr" ? "Pull request" : "Issue"];
+      if (item.state) bits.push(shortStr(item.state, 20));
+      if (item.author) bits.push("by " + shortStr(item.author, 40));
+      meta.textContent = bits.join(" · ");
+      wrap.append(title, meta);
+      return wrap;
+    }
+    const yesNo = (v) => (v === true ? "yes" : v === false ? "no" : "unknown");
+    function prFacts(item) {
+      const d = document.createElement("div"); d.className = "inbox-facts";
+      const head = item.head_repo ? `${shortStr(item.head_repo, 100)}:${shortStr(item.head_ref || "?", 100)}` : shortStr(item.head_ref || "unknown", 100);
+      for (const [k, v] of [["Head", head], ["Cross-repository", yesNo(item.cross_repository)], ["Maintainer can modify", yesNo(item.maintainer_can_modify)]]) {
+        const row = document.createElement("div");
+        const b = document.createElement("span"); b.className = "k"; b.textContent = k + ": ";
+        row.append(b, document.createTextNode(v)); d.appendChild(row);
+      }
+      const note = document.createElement("div"); note.className = "hint";
+      note.textContent = "Menagerie offers no push action here; a review handoff only prepares a draft.";
+      d.appendChild(note);
+      return d;
+    }
+    function bodyBlock(item) {
+      const pre = document.createElement("pre"); pre.className = "inbox-body";
+      const body = typeof item.body === "string" ? item.body.slice(0, 16384) : "";
+      pre.textContent = (body || "(no description)") + (item.body_truncated ? "\n\n… (the runtime cut this description to 16 KiB)" : "");
+      return pre;
+    }
+    function handoffRow(item) {
+      const row = document.createElement("div"); row.className = "row"; row.style.justifyContent = "flex-end";
+      const b = document.createElement("button"); b.className = "btn primary"; b.type = "button";
+      b.textContent = item.kind === "pr" ? "Start review session…" : "Start session…";
+      b.title = "Opens Spawn with a draft. You pick the directory and press Spawn; the draft is not sent.";
+      b.addEventListener("click", () => startHandoff(inbox.relayId, item));
+      row.appendChild(b);
+      return row;
+    }
+
+    // ---- handoff into a new session: draft only, never sent ----
+    let spawnHandoff = null;         // { text, ref } carried from the Inbox into the next spawn
+    const pendingDraft = new Map();  // client_id → draft text, placed (never sent) once `spawned` lands
+    function handoffDraft(item) {
+      const tpl = savedActions.find((a) => a.id === (item.kind === "pr" ? "review_pr" : "work_issue"));
+      const head = item.head_repo ? `${item.head_repo}:${item.head_ref || ""}` : String(item.head_ref || "");
+      const body = typeof item.body === "string" && item.body ? item.body.slice(0, 16384) : "(no description)";
+      const vals = { ref: `${item.repo}#${item.number}`, title: String(item.title || ""), url: safeHref(item.url) || "", body, head };
+      // One pass over the template, so text inside a value is never re-expanded.
+      return String(tpl ? tpl.text : "").replace(/\{(ref|title|url|body|head)\}/g, (_, k) => vals[k]);
+    }
+    function startHandoff(relayId, item) {
+      spawnHandoff = { text: handoffDraft(item), ref: `${item.repo}#${item.number}` };
+      spawnChildParentId = null;
+      closeModal("inboxScrim");
+      openModal("spawnScrim"); // renders the dialog, including the handoff chip
+      if (relays.some((r) => r.id === relayId && r.status === "connected")) { $("spawnRelay").value = relayId; renderAgentOptions(); renderSpawnParentChip(); }
+      $("spawnCwd").focus();
+    }
+    function renderSpawnHandoff() {
+      const chip = $("spawnHandoffChip");
+      if (!spawnHandoff) { chip.style.display = "none"; chip.replaceChildren(); return; }
+      chip.style.display = "";
+      const t = document.createElement("span");
+      t.textContent = `Draft from ${spawnHandoff.ref} goes into the new session as an editable draft; nothing is sent until you press Send. Set the working directory to your checkout. `;
+      const x = document.createElement("button"); x.type = "button"; x.className = "link"; x.textContent = "Drop draft";
+      x.addEventListener("click", () => { spawnHandoff = null; renderSpawnHandoff(); });
+      chip.replaceChildren(t, x);
+    }
+    // One handoff draft goes to one spawn: a double-click on Spawn sends two
+    // spawns, and only the first carries the draft. spawnHandoff itself stays
+    // until a spawn succeeds, so a failed spawn (which clears pendingDraft) can
+    // be retried with the draft.
+    function holdHandoff(clientId) { if (spawnHandoff && pendingDraft.size === 0) pendingDraft.set(clientId, spawnHandoff.text); }
+    function applyHandoffDraft(sess, clientId) {
+      const text = pendingDraft.get(clientId); if (!text) return;
+      pendingDraft.delete(clientId); spawnHandoff = null;
+      placeDraft(sess, text);
+    }
+
+    // ===== session pull request + checks (G1, session_pr_v1) ==========
+    // A "Pull request" section inside the repository panel, with its own
+    // explicit refresh. Links open in a new tab; the browser never fetches them.
+    const CHECK_BUCKETS = ["pass", "fail", "pending", "skipping", "cancel"];
+    const REVIEW_TEXT = { APPROVED: "approved", CHANGES_REQUESTED: "changes requested", REVIEW_REQUIRED: "review required" };
+    function refreshPr(s) {
+      const R = repoState(s);
+      if (R.prLoading || repoReadBlock(s) || !sessionAdvertises(s, CAP_PR)) return;
+      R.prLoading = true; renderRepo(s);
+      sendRead(relayOf(s), { type: "session_pr", session_id: s.id, session_token: s.token }, s.id, (msg) => {
+        R.prLoading = false; R.pr = msg; renderRepo(s);
+      });
+    }
+    function prSection(s, R) {
+      const sec = document.createElement("div"); sec.className = "repo-pr";
+      const head = document.createElement("div"); head.className = "repo-line";
+      const t = document.createElement("span"); t.className = "repo-sum"; t.textContent = "Pull request";
+      head.append(t, refreshBtn(s, R.prLoading, () => refreshPr(s), "Read pull request and checks"));
+      sec.append(head, prBody(R));
+      return sec;
+    }
+    function prBody(R) {
+      const r = R.pr;
+      const box = document.createElement("div");
+      if (!r || r.state !== "ok" || !r.pr) {
+        box.className = "repo-muted";
+        box.textContent = prStatusText(R);
+        return box;
+      }
+      box.append(prHeadline(r.pr), checksSummary(r), checksList(r, R));
+      return box;
+    }
+    function prStatusText(R) {
+      if (R.prLoading) return "Reading the pull request…";
+      if (!R.pr) return "Press ↻ to read the pull request for this branch.";
+      return readStateText(R.pr.state === "ok" ? "unavailable" : R.pr.state);
+    }
+    function prHeadline(pr) {
+      const line = document.createElement("div"); line.className = "repo-prline";
+      line.appendChild(extLink("#" + count(pr.number), pr.url));
+      const bits = [shortStr(pr.state || "unknown state", 20)];
+      if (pr.draft) bits.push("draft");
+      if (pr.review_decision) bits.push(REVIEW_TEXT[pr.review_decision] || shortStr(String(pr.review_decision).toLowerCase(), 40));
+      if (pr.cross_repository) bits.push("from another repository");
+      line.appendChild(document.createTextNode(" " + bits.join(" · ")));
+      return line;
+    }
+    function bucketCounts(r) {
+      const sum = r.summary && typeof r.summary === "object" ? r.summary : null;
+      const checks = Array.isArray(r.checks) ? r.checks : [];
+      const out = {};
+      for (const b of CHECK_BUCKETS) out[b] = sum ? count(sum[b]) : checks.filter((c) => c && c.bucket === b).length;
+      return out;
+    }
+    function checksSummary(r) {
+      const el = document.createElement("div"); el.className = "repo-checks";
+      const n = bucketCounts(r);
+      if (!CHECK_BUCKETS.some((b) => n[b] > 0)) { el.textContent = "No checks reported."; return el; }
+      for (const b of CHECK_BUCKETS) {
+        if (!n[b]) continue;
+        const c = document.createElement("span"); c.className = "chk chk-" + b; c.textContent = `${n[b]} ${b}`;
+        el.appendChild(c);
+      }
+      return el;
+    }
+    function checksList(r, R) {
+      const checks = Array.isArray(r.checks) ? r.checks.slice(0, 100) : [];
+      const d = document.createElement("details"); d.className = "repo-checklist";
+      d.open = !!R.checksOpen;
+      d.addEventListener("toggle", () => { R.checksOpen = d.open; });
+      const sm = document.createElement("summary");
+      const total = Math.max(count(r.checks_total), checks.length);
+      sm.textContent = `${checks.length} check${checks.length === 1 ? "" : "s"}` + (r.truncated || total > checks.length ? ` (showing ${checks.length} of ${total})` : "");
+      d.appendChild(sm);
+      for (const c of checks) d.appendChild(checkRow(c && typeof c === "object" ? c : {}));
+      return d;
+    }
+    function checkRow(c) {
+      const row = document.createElement("div"); row.className = "repo-check";
+      const b = document.createElement("span");
+      b.className = "chk chk-" + (CHECK_BUCKETS.includes(c.bucket) ? c.bucket : "other");
+      b.textContent = shortStr(c.state || c.bucket || "unknown", 20);
+      const wf = document.createElement("span"); wf.className = "repo-muted"; wf.textContent = c.workflow ? shortStr(c.workflow, 80) : "";
+      row.append(b, extLink(shortStr(c.name || "check", 120), c.link), wf);
+      return row;
+    }
 
     // Test/demo seam for /guide-nt + /walkthrough-nt. Deliberately does NOT expose
     // the live `relays`/`sessions` (they carry registration + session tokens) — the
@@ -4499,7 +5295,7 @@
               // Drop a fake relay's connection, as a network failure would.
               dropRelay(id) {
                 const r = relays.find((x) => x.id === id); if (!r) return "none";
-                r.status = "connecting"; failWaitsForRelay(id); renderAll(); return "ok";
+                r.status = "connecting"; failWaitsForRelay(id); failReadsForRelay(id); renderAll(); return "ok";
               },
               // Install a fake connected relay advertising `agents` — for exercising
               // the spawn dialog's agent combobox without a real relay.
@@ -4535,6 +5331,26 @@
                     transport: s2.transport, status: s2.status, agentSessionId: s2.agentSessionId || null })),
                 };
               },
+              // Protocol 1.5 repository reads, driven as the ↻ buttons drive them.
+              // Snapshots carry results only — never a session token.
+              refreshGit(id) { const s = sessions.get(id); if (!s) return "none"; refreshGit(s); return "ok"; },
+              refreshPr(id) { const s = sessions.get(id); if (!s) return "none"; refreshPr(s); return "ok"; },
+              openRepoPanel(id) { const s = sessions.get(id); if (!s) return "none"; repoState(s).open = true; renderRepo(s); return "ok"; },
+              repoSnapshot(id) { const s = sessions.get(id); return s && s.repo ? JSON.parse(JSON.stringify({ git: s.repo.git, pr: s.repo.pr, open: s.repo.open })) : null; },
+              // Saved actions: the list, a prepare as the menu does it, and the
+              // resulting drafts (never sent; these read what the user would edit).
+              savedActions() { return savedActions.map((a) => ({ ...a })); },
+              prepareAction(id, actionId) { return prepareAction(sessions.get(id), actionId); },
+              drafts(id) { const s = sessions.get(id); if (!s) return null; return { composer: drillSid === id ? $("drillComposer").value : (s.draft || ""), pty: s.ptyDraft || "" }; },
+              // GitHub inbox: open, refresh and pick as the buttons do; the
+              // snapshot is what the panel renders from (no credentials exist here).
+              openInbox() { openInbox(); return inbox.relayId; },
+              refreshInbox() { refreshInbox(); return inbox.loading ? "sent" : "not-sent"; },
+              selectInboxItem(kind, repo, number) { selectInboxItem({ kind, repo, number }); return inbox.itemLoading ? "sent" : "not-sent"; },
+              inboxSnapshot() { return JSON.parse(JSON.stringify({ relayId: inbox.relayId, loading: inbox.loading, result: inbox.result, sel: inbox.sel, item: inbox.item })); },
+              handoffDraft(item) { return handoffDraft(item); },
+              spawnHandoff() { return spawnHandoff ? { ...spawnHandoff } : null; },
+              pendingReads() { return [...pendingReads.entries()].map(([request_id, p]) => ({ request_id, relayId: p.relayId, sessionId: p.sessionId })); },
               // Reach the fake relay's hello (to vary advertised capabilities).
               _relayHello() { const r = relays.find((x) => x.id === "fake"); return r && r.hello; },
               // Seed a past-session meta file without having run a session.

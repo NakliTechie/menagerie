@@ -1,0 +1,16 @@
+{
+  "type": "session_pr_result",
+  "session_id": "a1b2c3d4e5f6a7b8",
+  "request_id": "p-1",
+  "state": "ok",
+  "pr": { "number": 14783, "url": "https://github.com/cli/cli/pull/14783", "state": "OPEN", "draft": true,
+          "review_decision": "REVIEW_REQUIRED", "merge_state": "UNKNOWN", "head_ref": "release-download-verify",
+          "head_oid": "654d851", "cross_repository": true },
+  "checks": [
+    { "name": "label-external", "workflow": "PR Triaging", "bucket": "skipping", "state": "SKIPPED",
+      "link": "https://github.com/cli/cli/actions/runs/1" }
+  ],
+  "summary": { "pass": 0, "fail": 0, "pending": 0, "skipping": 1, "cancel": 0 },
+  "checks_total": 1,
+  "truncated": false
+}

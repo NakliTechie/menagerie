@@ -1,0 +1,16 @@
+{
+  "type": "github_inbox_result",
+  "request_id": "i-1",
+  "state": "ok",
+  "review_requested": [
+    { "kind": "pr", "repo": "cli/cli", "number": 14783, "title": "Verify release downloads",
+      "url": "https://github.com/cli/cli/pull/14783", "author": "mrecachinas",
+      "updated_at": "2026-10-21T18:17:09Z", "draft": true }
+  ],
+  "assigned": [
+    { "kind": "issue", "repo": "NakliTechie/menagerie", "number": 2, "title": "Agent workflow gaps",
+      "url": "https://github.com/NakliTechie/menagerie/issues/2", "author": "NakliTechie",
+      "updated_at": "2026-10-17T09:00:00Z", "labels": [] }
+  ],
+  "truncated": false
+}

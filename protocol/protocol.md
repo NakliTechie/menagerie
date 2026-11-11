@@ -119,6 +119,10 @@ Two token kinds, no JWT/PKI/expiry-claims. Tokens are opaque random strings (32 
 | `permission_request` | relay → browser | ACP agent asks to proceed; carries request id + nested action (1.2) |
 | `permission_response` | browser → relay | Approve / reject / approve-always (session-scoped) (1.2) |
 | `prompt` | browser → relay | Prompt a structured session; structured analogue of `input` (1.2) |
+| `git_status` / `git_status_result` | browser ↔ relay | Read-only Git snapshot of a session's directory (1.5, `session_git_v1`) |
+| `github_inbox` / `github_inbox_result` | browser ↔ relay | Review requests and assigned issues for the runtime's `gh` login (1.5, `github_inbox_v1`) |
+| `github_item` / `github_item_result` | browser ↔ relay | One issue or pull request, for a handoff draft (1.5, `github_inbox_v1`) |
+| `session_pr` / `session_pr_result` | browser ↔ relay | The session branch's pull request and its checks (1.5, `session_pr_v1`) |
 | `error` | either | Typed error with `code` + human-readable `message` |
 
 ## 5. Messages
@@ -268,6 +272,106 @@ message shapes are generated into [`acp-types.ts`](./acp-types.ts).
 ```
 The relay maps `text` to ACP content blocks. Prompt completion surfaces as `event{idle}`; a pending permission request reads as `needs_input`; agent death as `exited`. Cancellation uses ACP's cancel via `signal{interrupt}`; `kill` remains the hard stop.
 
+### Repository context (protocol 1.5, capability-gated)
+
+Protocol 1.4 is reserved for the per-session usage object (issue 1). Protocol 1.5 adds
+**read-only repository and GitHub context**. Every 1.5 frame is optional and gated on
+`hello.capabilities`, a new optional string array. A relay that omits `capabilities`,
+or omits a name, never receives the matching request; the browser hides the feature.
+The reference relay (`relay-go`) advertises none of these, so it keeps its 1.3 behaviour.
+`hello.protocol_version` keeps reporting the highest version a relay fully implements,
+so a 1.5-capable runtime without the 1.4 usage object still reports `1.3`; clients read
+`capabilities`, not the version number.
+
+| Capability | Requests it enables |
+|---|---|
+| `session_git_v1` | `git_status` → `git_status_result` |
+| `github_inbox_v1` | `github_inbox` → `github_inbox_result`, `github_item` → `github_item_result` |
+| `session_pr_v1` | `session_pr` → `session_pr_result` |
+
+Rules shared by every 1.5 request:
+
+- The browser never names a filesystem path. Session requests carry `session_id` and
+  `session_token`; the runtime reads in the directory it recorded at spawn.
+- Every request carries a browser-chosen `request_id` (1–64 characters), echoed in the
+  result, so concurrent requests correlate.
+- Reads never change session lifecycle state, take control, clear `done`, or write to Git
+  or GitHub. Refresh is explicit; nothing polls.
+- A wrong session token returns `error{invalid_token}` and no data. Any other failure is a
+  result with a non-`ok` `state` and no command stderr, credentials or configuration.
+- Results are bounded and carry a `truncated` flag. The Git file list and the check list also carry a total (`files_total`, `checks_total`); inbox lanes carry only `truncated`. Non-`ok` results may omit their lists.
+
+`state` values: `ok`; `not_repository`; `no_directory` (the runtime did not record a
+directory, e.g. an adopted tmux session); `unavailable` (any other failure); `timeout`;
+`busy` (too many reads in flight); and for GitHub `gh_missing`, `not_authenticated`,
+`rate_limited`, `no_remote`, `no_pr`, `not_found`.
+
+**`git_status`** (browser → relay):
+```json
+{ "type": "git_status", "session_id": "…", "session_token": "…", "request_id": "g-1" }
+```
+**`git_status_result`** (relay → browser):
+```json
+{ "type": "git_status_result", "session_id": "…", "request_id": "g-1", "state": "ok",
+  "branch": "main", "detached": false, "unborn": false, "head": "a87dd16",
+  "upstream": "origin/main", "ahead": 1, "behind": 0,
+  "files": [ { "path": "index.html", "index": ".", "worktree": "M" },
+             { "path": "notes.txt", "index": "?", "worktree": "?" } ],
+  "files_total": 2, "truncated": false }
+```
+`index`/`worktree` are Git's porcelain-v2 status letters (`.` unchanged, `M`, `A`, `D`, `R`,
+`C`, `U`, `?` untracked). `branch` is absent when `detached`; `head` is absent when `unborn`;
+`upstream`, `ahead` and `behind` are absent without an upstream. `files` holds at most 200
+entries. The runtime runs Git with optional locks off, no fsmonitor and no prompts, so a read
+never rewrites the index.
+
+**`github_inbox`** (browser → relay; registration authority, no session):
+```json
+{ "type": "github_inbox", "request_id": "i-1" }
+```
+**`github_inbox_result`**:
+```json
+{ "type": "github_inbox_result", "request_id": "i-1", "state": "ok",
+  "review_requested": [ { "kind": "pr", "repo": "cli/cli", "number": 14783, "title": "…",
+      "url": "https://github.com/cli/cli/pull/14783", "author": "mrecachinas",
+      "updated_at": "2026-10-21T18:17:09Z", "draft": true } ],
+  "assigned": [ { "kind": "issue", "repo": "NakliTechie/menagerie", "number": 2, "title": "…",
+      "url": "https://github.com/NakliTechie/menagerie/issues/2", "author": "NakliTechie",
+      "updated_at": "…", "labels": [] } ],
+  "truncated": false }
+```
+Each lane holds at most 50 items, newest first; titles are cut to 200 characters. The runtime
+uses its machine's existing `gh` login and never returns a token.
+
+**`github_item`** (browser → relay) fetches one issue or pull request for a handoff:
+```json
+{ "type": "github_item", "request_id": "i-2", "kind": "issue", "repo": "NakliTechie/menagerie", "number": 2 }
+```
+`repo` must match `owner/name` (letters, digits, `-`, `_`, `.`); `number` is a positive integer.
+**`github_item_result`** carries `item`: `kind`, `repo`, `number`, `title`, `url`, `author`,
+`state`, `body` (cut to 16 KiB, with `body_truncated`), and for a pull request `head_ref`,
+`head_repo`, `cross_repository` and `maintainer_can_modify`. The browser renders `body` as
+text and uses it only to prefill an editable draft; nothing is sent to an agent until the
+user presses Send.
+
+**`session_pr`** (browser → relay):
+```json
+{ "type": "session_pr", "session_id": "…", "session_token": "…", "request_id": "p-1" }
+```
+**`session_pr_result`**:
+```json
+{ "type": "session_pr_result", "session_id": "…", "request_id": "p-1", "state": "ok",
+  "pr": { "number": 14783, "url": "…", "state": "OPEN", "draft": true, "review_decision": "REVIEW_REQUIRED",
+          "merge_state": "UNKNOWN", "head_ref": "release-download-verify", "head_oid": "654d851…",
+          "cross_repository": true },
+  "checks": [ { "name": "label-external", "workflow": "PR Triaging", "bucket": "skipping",
+                "state": "SKIPPED", "link": "https://github.com/…" } ],
+  "summary": { "pass": 0, "fail": 0, "pending": 0, "skipping": 1, "cancel": 0 },
+  "checks_total": 1, "truncated": false }
+```
+`state: "no_pr"` means the session's branch has no pull request. `checks` holds the latest run
+of each check (at most 100). The browser opens `link` in a new tab and never fetches it.
+
 ### `error` (either direction)
 ```json
 { "type": "error", "session_id": "…", "code": "invalid_token", "message": "…" }
@@ -299,6 +403,8 @@ The set is **open-ended** — clients MUST tolerate unknown codes and surface `m
 - Protocol versions are semantic: `protocol-v<major>.<minor>`. This is `1.2`.
   - **1.1** added `sessions` / `attach` / `attached` (additive; same major).
   - **1.2** added structured sessions: `hello.agent_transports`, `spawn.transport`, and the `session_update` / `permission_request` / `permission_response` / `prompt` frames (additive; ACP payloads nested, never flattened).
+  - **1.4** is reserved for the per-session usage object (issue 1).
+  - **1.5** added `hello.capabilities` and the capability-gated repository and GitHub reads (`git_status`, `github_inbox`, `github_item`, `session_pr`).
 - The browser reads `hello.protocol_version`. On mismatch it shows a user-visible warning and attempts the connection anyway (best-effort).
 - Adding a new optional field or a new `error` code is a **minor** bump. Removing/renaming a field or message type, or changing a field's meaning, is a **major** bump.
 

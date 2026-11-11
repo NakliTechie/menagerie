@@ -1,0 +1,19 @@
+{
+  "type": "git_status_result",
+  "session_id": "a1b2c3d4e5f6a7b8",
+  "request_id": "g-1",
+  "state": "ok",
+  "branch": "main",
+  "detached": false,
+  "unborn": false,
+  "head": "a87dd16",
+  "upstream": "origin/main",
+  "ahead": 1,
+  "behind": 0,
+  "files": [
+    { "path": "index.html", "index": ".", "worktree": "M" },
+    { "path": "notes.txt", "index": "?", "worktree": "?" }
+  ],
+  "files_total": 2,
+  "truncated": false
+}

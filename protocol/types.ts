@@ -1,7 +1,7 @@
 /**
  * Menagerie relay protocol — canonical message type definitions.
  *
- *   protocol-v1.3
+ *   protocol-v1.3 (+ capability-gated 1.5 reads; see `hello.capabilities`)
  *
  * Single source of truth for message shapes. The browser app consumes these
  * types directly; the Go relay hand-ports them into `internal/protocol/`.
@@ -102,6 +102,12 @@ export interface HelloMessage extends BaseMessage {
    * (see `spawn.resume_agent_session`). Absent ⇒ the relay resumes nothing.
    */
   resume_agents?: string[];
+  /**
+   * Protocol 1.5: optional feature names this relay or runtime serves
+   * (`session_git_v1`, `github_inbox_v1`, `session_pr_v1`). Absent ⇒ none.
+   * Clients gate the 1.5 reads on these names, never on `protocol_version`.
+   */
+  capabilities?: Capability[];
 }
 
 /**
@@ -380,6 +386,174 @@ export interface PromptMessage extends BaseMessage {
   wait?: WaitSpec;
 }
 
+// ---- Repository context (protocol 1.5, capability-gated) -------------------
+//
+// Read-only Git and GitHub context. Every request below is sent only to a relay
+// whose `hello.capabilities` lists the matching name. The browser never names a
+// filesystem path; session reads use the directory the runtime recorded at
+// spawn. Reads never change lifecycle state, take control, clear `done`, or
+// write to Git or GitHub. Refresh is explicit; nothing polls.
+
+/** Known 1.5 capability names; the set is open-ended. */
+export type Capability = "session_git_v1" | "github_inbox_v1" | "session_pr_v1" | (string & {});
+
+/** Result state shared by every 1.5 read. Anything but `ok` carries no data. */
+export type ReadState =
+  | "ok"
+  | "not_repository"
+  | "no_directory" // the runtime recorded no directory (e.g. an adopted tmux session)
+  | "unavailable"
+  | "timeout"
+  | "busy" // too many reads in flight
+  | "gh_missing"
+  | "not_authenticated"
+  | "rate_limited"
+  | "no_remote"
+  | "no_pr"
+  | "not_found"
+  | (string & {});
+
+/** Git porcelain-v2 status letter: `.` unchanged, `?` untracked. */
+export type GitStatusLetter = "." | "M" | "A" | "D" | "R" | "C" | "U" | "?" | "T" | "!" | (string & {});
+
+export interface GitFileEntry {
+  path: string;
+  index: GitStatusLetter;
+  worktree: GitStatusLetter;
+}
+
+/** Browser → relay (`session_git_v1`). */
+export interface GitStatusMessage extends BaseMessage {
+  type: "git_status";
+  session_id: string;
+  session_token: string;
+  request_id: string; // 1–64 characters, echoed in the result
+}
+
+/** Relay → browser. `branch` absent when detached; `head` absent when unborn;
+ *  `upstream`/`ahead`/`behind` absent without an upstream. `files` ≤ 200. */
+export interface GitStatusResultMessage extends BaseMessage {
+  type: "git_status_result";
+  session_id: string;
+  request_id: string;
+  state: ReadState;
+  branch?: string;
+  detached?: boolean;
+  unborn?: boolean;
+  head?: string;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+  files?: GitFileEntry[];
+  files_total?: number;
+  truncated?: boolean;
+}
+
+export interface GitHubInboxItem {
+  kind: "pr" | "issue";
+  repo: string; // owner/name
+  number: number;
+  title: string; // ≤ 200 characters
+  url: string;
+  author?: string;
+  updated_at?: string;
+  draft?: boolean; // pull requests
+  labels?: string[]; // issues
+}
+
+/** Browser → relay (`github_inbox_v1`); registration authority, no session. */
+export interface GitHubInboxMessage extends BaseMessage {
+  type: "github_inbox";
+  request_id: string;
+}
+
+/** Relay → browser. Each lane holds at most 50 items, newest first. */
+export interface GitHubInboxResultMessage extends BaseMessage {
+  type: "github_inbox_result";
+  request_id: string;
+  state: ReadState;
+  review_requested?: GitHubInboxItem[];
+  assigned?: GitHubInboxItem[];
+  truncated?: boolean;
+}
+
+/** Browser → relay (`github_inbox_v1`): one issue or pull request for a handoff. */
+export interface GitHubItemMessage extends BaseMessage {
+  type: "github_item";
+  request_id: string;
+  kind: "pr" | "issue";
+  repo: string; // owner/name: letters, digits, -, _, .
+  number: number; // positive integer
+}
+
+export interface GitHubItemDetail {
+  kind: "pr" | "issue";
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  author?: string;
+  state?: string;
+  body?: string; // ≤ 16 KiB; rendered as text, used only to prefill an editable draft
+  body_truncated?: boolean;
+  labels?: string[];
+  // pull requests only
+  head_ref?: string;
+  head_repo?: string;
+  cross_repository?: boolean;
+  maintainer_can_modify?: boolean;
+}
+
+export interface GitHubItemResultMessage extends BaseMessage {
+  type: "github_item_result";
+  request_id: string;
+  state: ReadState;
+  item?: GitHubItemDetail;
+}
+
+/** Browser → relay (`session_pr_v1`). */
+export interface SessionPrMessage extends BaseMessage {
+  type: "session_pr";
+  session_id: string;
+  session_token: string;
+  request_id: string;
+}
+
+export type CheckBucket = "pass" | "fail" | "pending" | "skipping" | "cancel" | (string & {});
+
+export interface SessionPrCheck {
+  name: string;
+  workflow?: string;
+  bucket: CheckBucket;
+  state?: string;
+  link?: string; // opened in a new tab, never fetched
+}
+
+export interface SessionPrInfo {
+  number: number;
+  url: string;
+  state: string; // OPEN | CLOSED | MERGED
+  draft?: boolean;
+  review_decision?: string;
+  merge_state?: string;
+  head_ref?: string;
+  head_oid?: string;
+  cross_repository?: boolean;
+}
+
+/** Relay → browser. `state: "no_pr"` ⇒ the session's branch has no pull request. */
+export interface SessionPrResultMessage extends BaseMessage {
+  type: "session_pr_result";
+  session_id: string;
+  request_id: string;
+  state: ReadState;
+  pr?: SessionPrInfo;
+  checks?: SessionPrCheck[]; // latest run of each check, ≤ 100
+  summary?: Record<"pass" | "fail" | "pending" | "skipping" | "cancel", number>;
+  checks_total?: number;
+  truncated?: boolean;
+}
+
 // ===========================================================================
 // Either direction
 // ===========================================================================
@@ -404,6 +578,10 @@ export type RelayToBrowserMessage =
   | ResumeFailedMessage
   | SessionUpdateMessage
   | PermissionRequestMessage
+  | GitStatusResultMessage
+  | GitHubInboxResultMessage
+  | GitHubItemResultMessage
+  | SessionPrResultMessage
   | ErrorMessage;
 
 export type BrowserToRelayMessage =
@@ -415,6 +593,10 @@ export type BrowserToRelayMessage =
   | ResumeMessage
   | PromptMessage
   | PermissionResponseMessage
+  | GitStatusMessage
+  | GitHubInboxMessage
+  | GitHubItemMessage
+  | SessionPrMessage
   | ErrorMessage;
 
 export type Message = RelayToBrowserMessage | BrowserToRelayMessage;
