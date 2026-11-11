@@ -10,7 +10,7 @@ without asking the agent to inspect Git or automatically sending it a command.
 ## Ownership and compatibility
 
 Menagerie owns presentation and the public protocol. Continuum implements the new
-runtime reader. Protocol 1.4 adds optional hello capabilities and authenticated
+runtime reader. Protocol 1.5 (1.4 is reserved for the usage object) adds optional hello capabilities and authenticated
 git_status/git_status_result frames; older 1.x relays keep their existing workflow.
 Only a runtime advertising session_git_v1 receives requests. No new Git reader is
 added to the reference relay. No installed service changes occur in development.
