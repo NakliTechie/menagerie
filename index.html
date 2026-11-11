@@ -1317,6 +1317,28 @@
     .draftbox { max-width: 640px; }
     .draftbox textarea { width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono); box-sizing: border-box; }
 
+    /* ---- GitHub inbox (G1) ---- */
+    .modal.wide { max-width: 880px; }
+    .inbox-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .inbox-bar select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; }
+    .inbox-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 700px) { .inbox-lanes { grid-template-columns: 1fr; } }
+    .inbox-lane { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+    .inbox-item { text-align: left; display: flex; flex-direction: column; gap: 2px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 9px; color: var(--text); cursor: pointer; font: inherit; }
+    .inbox-item:hover { border-color: var(--faint); }
+    .inbox-item.active { border-color: var(--accent); }
+    .inbox-item .ref { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+    .inbox-item .ttl { font-size: 13px; overflow-wrap: anywhere; }
+    .inbox-item .meta { font-size: 11px; color: var(--faint); }
+    .inbox-detail { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .inbox-detail[hidden] { display: none; }
+    .inbox-detail a { color: var(--accent-text); }
+    .inbox-dbody { display: flex; flex-direction: column; gap: 8px; }
+    .inbox-dtitle { font-weight: 600; overflow-wrap: anywhere; }
+    .inbox-facts { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; }
+    .inbox-facts .k { color: var(--muted); }
+    .inbox-body { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; max-height: 260px; overflow: auto; margin: 0; }
+
     /* ---- raw event-log pane ---- */
     .rawlog { flex: 0 0 220px; overflow-y: auto; background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; display: none; }
     .rawlog.on { display: block; }
@@ -1385,6 +1407,7 @@
     <span class="workspace" id="workspace">no workspace</span>
     <span class="spacer"></span>
     <button class="btn icon ghost" id="treeBtn" title="Grid / tree view" aria-label="Toggle grid or tree view">▦</button>
+    <button class="btn ghost" id="inboxBtn" style="display:none" title="GitHub inbox: review requests and assigned issues">Inbox</button>
     <button class="btn primary" id="spawnBtn">+ Spawn</button>
     <button class="btn icon ghost" id="helpBtn" title="About Menagerie" aria-label="About Menagerie">?</button>
     <button class="btn icon ghost" id="keybarBtn" title="Terminal keys (Esc, Ctrl, arrows…)" aria-label="Toggle terminal key bar">⌨</button>
@@ -1547,6 +1570,7 @@
       <header><h2>Spawn agent</h2><span class="spacer"></span><button class="btn icon ghost" data-close>✕</button></header>
       <div class="body">
         <div id="spawnParentChip" class="spawn-parent-chip" style="display:none"></div>
+        <div id="spawnHandoffChip" class="spawn-parent-chip" style="display:none"></div>
         <div class="field"><label for="spawnRelay">Relay</label><select id="spawnRelay"></select>
           <div id="spawnRelayHint" class="combo-hint"><span id="spawnRelayHintText">No relay is connected. </span><button type="button" class="link" id="spawnAddRelayBtn">Add or connect a relay in Settings →</button></div></div>
         <div class="field"><label for="spawnAgentInput">Agent</label>
@@ -1569,6 +1593,21 @@
           </label></div>
         <div class="row"><button class="btn primary" id="doSpawnBtn">Spawn</button></div>
         <div class="inline-error" id="spawnResult"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GitHub inbox (protocol 1.5, github_inbox_v1): shown only when a connected relay advertises it -->
+  <div class="scrim" id="inboxScrim" data-close>
+    <div class="modal wide" role="dialog" aria-label="GitHub inbox">
+      <header><h2>GitHub inbox</h2><span class="spacer"></span><button class="btn icon ghost" data-close aria-label="Close">✕</button></header>
+      <div class="body">
+        <div class="inbox-bar"><select id="inboxRelay" aria-label="Runtime"></select><button class="btn" id="inboxRefreshBtn">↻ Refresh</button><span class="hint" id="inboxStatus" aria-live="polite"></span></div>
+        <div class="inbox-lanes">
+          <div><div class="section-title">Review requested</div><div class="inbox-lane" id="inboxReview"></div></div>
+          <div><div class="section-title">Assigned issues</div><div class="inbox-lane" id="inboxAssigned"></div></div>
+        </div>
+        <div class="inbox-detail" id="inboxDetail" hidden></div>
       </div>
     </div>
   </div>
@@ -1987,6 +2026,7 @@
         initAcpState(sess); sessions.set(sess.id, sess); mountTile(sess); writeSessionMeta(sess);
         const task = pendingTask.get(msg.client_id); pendingTask.delete(msg.client_id);
         if (task && sess.transport === "acp") sendPrompt(sess, task);
+        applyHandoffDraft(sess, msg.client_id); // an Inbox draft lands as a draft, never sent
         noteInMemoryOnFirstSession();
       },
       // On (re)connect the relay lists live sessions; (re-)attach each so a full
@@ -2050,6 +2090,8 @@
       waited(relay, msg) { settleWait(msg.wait_id, { session_id: msg.session_id, state: msg.state, timed_out: !!msg.timed_out }); },
       // Protocol 1.5 reads: each result settles the request that asked for it.
       git_status_result(relay, msg) { onReadResult(relay, msg); },
+      github_inbox_result(relay, msg) { onReadResult(relay, msg); },
+      github_item_result(relay, msg) { onReadResult(relay, msg); },
     };
     // A replayed permission request (seq -1) is only a live decision if the
     // relay's own tracked status at attach said so; otherwise it is history.
@@ -2128,7 +2170,7 @@
       // A failed spawn never sends a `spawned` reply, so its pendingCwd/pendingTransport
       // entries would leak (the error frame carries no client_id to key off). Spawns
       // are modal — one at a time — so any pending entries here are stale; clear them.
-      pendingCwd.clear(); pendingTransport.clear(); pendingTask.clear();
+      pendingCwd.clear(); pendingTransport.clear(); pendingTask.clear(); pendingDraft.clear();
       notify((msg.code || "error") + ": " + (msg.message || ""), false);
     }
     function handleMessage(relay, msg) {
@@ -2766,6 +2808,7 @@
       // session has a token (a spawn with a Task and no prompt was a silent no-op).
       const args = agent === "custom" ? (customCmd ? customCmd.split(/\s+/) : []) : (tr === "pty" && task ? [task] : []);
       holdTask(client_id, tr, task);
+      holdHandoff(client_id);
       const parentId = resolveSpawnParent(relayId); // v1.2: only if a live session on THIS relay
       spawnChildParentId = null;
       send(relay, { type: "spawn", agent, cwd, args, env: {}, client_id, transport: tr, parent_session_id: parentId });
@@ -3395,7 +3438,7 @@
     // v1.2: the spawn dialog can be scoped to a parent (spawn-child). Transient —
     // cleared when the plain + Spawn opens it, and after a spawn is sent.
     let spawnChildParentId = null;
-    function openSpawnDialog() { spawnChildParentId = null; openModal("spawnScrim"); }
+    function openSpawnDialog() { spawnChildParentId = null; spawnHandoff = null; openModal("spawnScrim"); }
     function resolveSpawnParent(relayId) {
       const p = spawnChildParentId && sessions.get(spawnChildParentId);
       return p && p.relayId === relayId ? spawnChildParentId : undefined;
@@ -3403,7 +3446,7 @@
     function openSpawnChild(sess) {
       const relay = relays.find((r) => r.id === sess.relayId);
       if (!relay || !(relay.hello && relay.hello.hosts_children)) return; // relay can't host children
-      spawnChildParentId = sess.id;
+      spawnChildParentId = sess.id; spawnHandoff = null;
       openModal("spawnScrim");
       $("spawnRelay").value = sess.relayId; renderAgentOptions();
       if (sess.cwd) $("spawnCwd").value = sess.cwd; // inherit the parent's cwd (spec Q2)
@@ -3421,6 +3464,7 @@
       $("spawnRelayHintText").textContent = none ? "No relay is connected. " : "";
       $("spawnAddRelayBtn").textContent = none ? "Add or connect a relay in Settings →" : "Add another relay →";
       renderSpawnParentChip();
+      renderSpawnHandoff();
     }
     // The "child of: X" chip only shows when the parent is a live session on the
     // CURRENTLY-selected relay — otherwise the spawn would omit parent_session_id
@@ -3606,7 +3650,7 @@
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
     function renderAll() {
       renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid();
-      syncRepoRows(); syncActionControls();
+      syncRepoRows(); syncActionControls(); syncInboxButton();
       if (NK) { try { NK.title(sessions.size ? `Menagerie — ${sessions.size} session${sessions.size === 1 ? "" : "s"}` : "Menagerie"); } catch {} }
     }
 
@@ -3803,6 +3847,9 @@
       if (target) target.focus();
     });
     $("spawnBtn").addEventListener("click", openSpawnDialog);
+    $("inboxBtn").addEventListener("click", openInbox);
+    $("inboxRefreshBtn").addEventListener("click", refreshInbox);
+    $("inboxRelay").addEventListener("change", (e) => { resetInbox(e.target.value); renderInbox(); });
     $("helpBtn").addEventListener("click", () => openModal("helpScrim"));
     $("helpTourBtn").addEventListener("click", () => { closeModal("helpScrim"); setTimeout(() => showTour({ force: true }), 60); });
     $("themeBtn").addEventListener("click", toggleTheme);
@@ -4370,6 +4417,202 @@
       ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
     }
 
+    // ===== GitHub inbox + handoff (G1, github_inbox_v1) ================
+    // Two lanes read through the runtime's own `gh` login: review requests and
+    // assigned issues. Refresh is a button (GitHub's search API allows 30
+    // requests a minute); nothing polls. Picking an item fetches its detail,
+    // shown as plain text. "Start session" opens the existing Spawn dialog and
+    // carries a draft that lands in the new session WITHOUT being sent; the
+    // user presses Spawn, then Send. There is no push action.
+    const CAP_INBOX = "github_inbox_v1";
+    const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+    // Sendable: advertised AND registered (these reads need registration authority).
+    function hasCap(relay, name) { return !!relay && relay.status === "connected" && relayAdvertises(relay, name); }
+    // Only https links become anchors; anything else renders as plain text.
+    function safeHref(u) { return typeof u === "string" && /^https:\/\/\S+$/i.test(u) ? u : null; }
+    function extLink(text, url) {
+      const href = safeHref(url);
+      if (!href) { const sp = document.createElement("span"); sp.textContent = text; return sp; }
+      const a = document.createElement("a"); a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = text;
+      return a;
+    }
+
+    const inbox = { gen: 0, relayId: null, result: null, loading: false, at: 0, sel: null, item: null, itemLoading: false };
+    function inboxRelays() { return relays.filter((r) => hasCap(r, CAP_INBOX)); }
+    function syncInboxButton() { $("inboxBtn").style.display = inboxRelays().length ? "" : "none"; }
+    function resetInbox(relayId) { Object.assign(inbox, { gen: inbox.gen + 1, relayId, result: null, loading: false, at: 0, sel: null, item: null, itemLoading: false }); }
+    function openInbox() { openModal("inboxScrim"); renderInboxRelays(); renderInbox(); }
+    function renderInboxRelays() {
+      const sel = $("inboxRelay"), list = inboxRelays();
+      if (!list.some((r) => r.id === inbox.relayId)) resetInbox(list.length ? list[0].id : null);
+      sel.replaceChildren(...list.map((r) => new Option(r.name, r.id)));
+      sel.value = inbox.relayId || "";
+      sel.style.display = list.length > 1 ? "" : "none";
+    }
+    function refreshInbox() {
+      const relay = relays.find((r) => r.id === inbox.relayId);
+      if (!hasCap(relay, CAP_INBOX) || inbox.loading) return;
+      inbox.loading = true; renderInbox();
+      const gen = inbox.gen;
+      sendRead(relay, { type: "github_inbox" }, null, (msg) => {
+        if (gen !== inbox.gen) return;
+        inbox.loading = false; inbox.result = msg; inbox.at = Date.now(); renderInbox();
+      });
+    }
+    function renderInbox() {
+      $("inboxRefreshBtn").disabled = inbox.loading || !inbox.relayId;
+      $("inboxStatus").textContent = inboxStatusText();
+      const ok = !!inbox.result && inbox.result.state === "ok";
+      fillLane($("inboxReview"), ok ? inbox.result.review_requested : null, "No pull requests are waiting for your review.");
+      fillLane($("inboxAssigned"), ok ? inbox.result.assigned : null, "No open issues are assigned to you.");
+      renderInboxDetail();
+    }
+    function inboxStatusText() {
+      if (!inbox.relayId) return "No connected runtime offers the GitHub inbox.";
+      if (inbox.loading) return "Loading…";
+      const r = inbox.result;
+      if (!r) return "Press Refresh to load your inbox. It does not refresh on its own.";
+      if (r.state !== "ok") return readStateText(r.state);
+      return `Updated ${new Date(inbox.at).toLocaleTimeString()}` + (r.truncated ? " · each list is cut to 50 items" : "");
+    }
+    const validRef = (it) => !!it && (it.kind === "pr" || it.kind === "issue") && typeof it.repo === "string" && REPO_RE.test(it.repo) && Number.isInteger(it.number) && it.number > 0;
+    const refKey = (it) => `${it.kind}:${it.repo}#${it.number}`;
+    function fillLane(el, items, emptyText) {
+      el.replaceChildren();
+      if (!Array.isArray(items)) return;
+      const valid = items.filter(validRef).slice(0, 50);
+      if (!valid.length) { const e = document.createElement("div"); e.className = "hint"; e.textContent = emptyText; el.appendChild(e); return; }
+      for (const it of valid) el.appendChild(inboxRow(it));
+    }
+    function inboxRow(it) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "inbox-item";
+      if (inbox.sel && refKey(inbox.sel) === refKey(it)) b.classList.add("active");
+      const ref = document.createElement("span"); ref.className = "ref"; ref.textContent = `${it.repo}#${it.number}`;
+      const ttl = document.createElement("span"); ttl.className = "ttl"; ttl.textContent = shortStr(it.title || "(untitled)", 200);
+      const meta = document.createElement("span"); meta.className = "meta"; meta.textContent = inboxMeta(it);
+      b.append(ref, ttl, meta);
+      b.addEventListener("click", () => selectInboxItem(it));
+      return b;
+    }
+    const labelName = (l) => (typeof l === "string" ? l : String((l && l.name) || ""));
+    function fmtDate(v) { const t = Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleDateString() : shortStr(v, 24); }
+    function inboxMeta(it) {
+      const bits = [];
+      if (it.author) bits.push("by " + shortStr(it.author, 40));
+      if (it.updated_at) bits.push("updated " + fmtDate(it.updated_at));
+      if (it.draft) bits.push("draft");
+      if (Array.isArray(it.labels) && it.labels.length) bits.push(it.labels.slice(0, 4).map((l) => shortStr(labelName(l), 24)).join(", "));
+      return bits.join(" · ");
+    }
+    function selectInboxItem(it) {
+      const relay = relays.find((r) => r.id === inbox.relayId);
+      if (!hasCap(relay, CAP_INBOX) || !validRef(it)) return;
+      inbox.sel = { kind: it.kind, repo: it.repo, number: it.number, url: it.url };
+      inbox.item = null; inbox.itemLoading = true; renderInbox();
+      const key = refKey(it), gen = inbox.gen;
+      sendRead(relay, { type: "github_item", kind: it.kind, repo: it.repo, number: it.number }, null, (msg) => {
+        if (gen !== inbox.gen || !inbox.sel || refKey(inbox.sel) !== key) return;
+        inbox.itemLoading = false; inbox.item = msg; renderInbox();
+      });
+    }
+    function renderInboxDetail() {
+      const el = $("inboxDetail"); el.replaceChildren();
+      el.hidden = !inbox.sel;
+      if (!inbox.sel) return;
+      const head = document.createElement("div");
+      const ref = document.createElement("strong"); ref.textContent = `${inbox.sel.repo}#${inbox.sel.number}`;
+      head.append(ref, document.createTextNode(" · "), extLink("open on GitHub ↗", inbox.sel.url));
+      el.append(head, inboxDetailBody());
+    }
+    function inboxDetailBody() {
+      const r = inbox.item;
+      const box = document.createElement("div"); box.className = "hint";
+      if (inbox.itemLoading || !r) { box.textContent = inbox.itemLoading ? "Loading…" : ""; return box; }
+      if (r.state !== "ok") { box.textContent = readStateText(r.state); return box; }
+      if (!validRef(r.item)) { box.textContent = readStateText("unavailable"); return box; }
+      box.className = "inbox-dbody";
+      box.appendChild(inboxItemHeader(r.item));
+      if (r.item.kind === "pr") box.appendChild(prFacts(r.item));
+      box.append(bodyBlock(r.item), handoffRow(r.item));
+      return box;
+    }
+    function inboxItemHeader(item) {
+      const wrap = document.createElement("div");
+      const title = document.createElement("div"); title.className = "inbox-dtitle"; title.textContent = shortStr(item.title || "(untitled)", 300);
+      const meta = document.createElement("div"); meta.className = "hint";
+      const bits = [item.kind === "pr" ? "Pull request" : "Issue"];
+      if (item.state) bits.push(shortStr(item.state, 20));
+      if (item.author) bits.push("by " + shortStr(item.author, 40));
+      meta.textContent = bits.join(" · ");
+      wrap.append(title, meta);
+      return wrap;
+    }
+    const yesNo = (v) => (v === true ? "yes" : v === false ? "no" : "unknown");
+    function prFacts(item) {
+      const d = document.createElement("div"); d.className = "inbox-facts";
+      const head = item.head_repo ? `${shortStr(item.head_repo, 100)}:${shortStr(item.head_ref || "?", 100)}` : shortStr(item.head_ref || "unknown", 100);
+      for (const [k, v] of [["Head", head], ["Cross-repository", yesNo(item.cross_repository)], ["Maintainer can modify", yesNo(item.maintainer_can_modify)]]) {
+        const row = document.createElement("div");
+        const b = document.createElement("span"); b.className = "k"; b.textContent = k + ": ";
+        row.append(b, document.createTextNode(v)); d.appendChild(row);
+      }
+      const note = document.createElement("div"); note.className = "hint";
+      note.textContent = "Menagerie offers no push action here; a review handoff only prepares a draft.";
+      d.appendChild(note);
+      return d;
+    }
+    function bodyBlock(item) {
+      const pre = document.createElement("pre"); pre.className = "inbox-body";
+      const body = typeof item.body === "string" ? item.body.slice(0, 16384) : "";
+      pre.textContent = (body || "(no description)") + (item.body_truncated ? "\n\n… (the runtime cut this description to 16 KiB)" : "");
+      return pre;
+    }
+    function handoffRow(item) {
+      const row = document.createElement("div"); row.className = "row"; row.style.justifyContent = "flex-end";
+      const b = document.createElement("button"); b.className = "btn primary"; b.type = "button";
+      b.textContent = item.kind === "pr" ? "Start review session…" : "Start session…";
+      b.title = "Opens Spawn with a draft. You pick the directory and press Spawn; the draft is not sent.";
+      b.addEventListener("click", () => startHandoff(inbox.relayId, item));
+      row.appendChild(b);
+      return row;
+    }
+
+    // ---- handoff into a new session: draft only, never sent ----
+    let spawnHandoff = null;         // { text, ref } carried from the Inbox into the next spawn
+    const pendingDraft = new Map();  // client_id → draft text, placed (never sent) once `spawned` lands
+    function handoffDraft(item) {
+      const tpl = savedActions.find((a) => a.id === (item.kind === "pr" ? "review_pr" : "work_issue"));
+      const head = item.head_repo ? `${item.head_repo}:${item.head_ref || ""}` : String(item.head_ref || "");
+      const body = typeof item.body === "string" && item.body ? item.body.slice(0, 16384) : "(no description)";
+      const vals = { ref: `${item.repo}#${item.number}`, title: String(item.title || ""), url: safeHref(item.url) || "", body, head };
+      // One pass over the template, so text inside a value is never re-expanded.
+      return String(tpl ? tpl.text : "").replace(/\{(ref|title|url|body|head)\}/g, (_, k) => vals[k]);
+    }
+    function startHandoff(relayId, item) {
+      spawnHandoff = { text: handoffDraft(item), ref: `${item.repo}#${item.number}` };
+      spawnChildParentId = null;
+      closeModal("inboxScrim");
+      openModal("spawnScrim"); // renders the dialog, including the handoff chip
+      if (relays.some((r) => r.id === relayId && r.status === "connected")) { $("spawnRelay").value = relayId; renderAgentOptions(); renderSpawnParentChip(); }
+      $("spawnCwd").focus();
+    }
+    function renderSpawnHandoff() {
+      const chip = $("spawnHandoffChip");
+      if (!spawnHandoff) { chip.style.display = "none"; chip.replaceChildren(); return; }
+      chip.style.display = "";
+      const t = document.createElement("span");
+      t.textContent = `Draft from ${spawnHandoff.ref} goes into the new session as an editable draft; nothing is sent until you press Send. Set the working directory to your checkout. `;
+      const x = document.createElement("button"); x.type = "button"; x.className = "link"; x.textContent = "Drop draft";
+      x.addEventListener("click", () => { spawnHandoff = null; renderSpawnHandoff(); });
+      chip.replaceChildren(t, x);
+    }
+    function holdHandoff(clientId) { if (spawnHandoff) pendingDraft.set(clientId, spawnHandoff.text); }
+    function applyHandoffDraft(sess, clientId) {
+      const text = pendingDraft.get(clientId); if (!text) return;
+      pendingDraft.delete(clientId); spawnHandoff = null;
+      placeDraft(sess, text);
+    }
+
     // Test/demo seam for /guide-nt + /walkthrough-nt. Deliberately does NOT expose
     // the live `relays`/`sessions` (they carry registration + session tokens) — the
     // seam methods reach them through closure, so nothing on the page can read a
@@ -4771,6 +5014,14 @@
               savedActions() { return savedActions.map((a) => ({ ...a })); },
               prepareAction(id, actionId) { return prepareAction(sessions.get(id), actionId); },
               drafts(id) { const s = sessions.get(id); if (!s) return null; return { composer: drillSid === id ? $("drillComposer").value : (s.draft || ""), pty: s.ptyDraft || "" }; },
+              // GitHub inbox: open, refresh and pick as the buttons do; the
+              // snapshot is what the panel renders from (no credentials exist here).
+              openInbox() { openInbox(); return inbox.relayId; },
+              refreshInbox() { refreshInbox(); return inbox.loading ? "sent" : "not-sent"; },
+              selectInboxItem(kind, repo, number) { selectInboxItem({ kind, repo, number }); return inbox.itemLoading ? "sent" : "not-sent"; },
+              inboxSnapshot() { return JSON.parse(JSON.stringify({ relayId: inbox.relayId, loading: inbox.loading, result: inbox.result, sel: inbox.sel, item: inbox.item })); },
+              handoffDraft(item) { return handoffDraft(item); },
+              spawnHandoff() { return spawnHandoff ? { ...spawnHandoff } : null; },
               pendingReads() { return [...pendingReads.entries()].map(([request_id, p]) => ({ request_id, relayId: p.relayId, sessionId: p.sessionId })); },
               // Reach the fake relay's hello (to vary advertised capabilities).
               _relayHello() { const r = relays.find((x) => x.id === "fake"); return r && r.hello; },
