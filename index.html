@@ -1304,6 +1304,19 @@
     .repo-file .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .repo-muted { color: var(--faint); }
 
+    /* ---- saved actions (G0) ---- */
+    .act-sel { max-width: 130px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; }
+    .act-sel:disabled { opacity: .55; }
+    .composer-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .composer-tools .act-sel { max-width: 260px; }
+    .actions-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0; }
+    .action-edit { display: flex; flex-direction: column; gap: 5px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
+    .action-edit input, .action-edit textarea, .draftbox textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; font-family: inherit; }
+    .action-edit input { font-weight: 550; }
+    .action-edit textarea { min-height: 56px; resize: vertical; }
+    .draftbox { max-width: 640px; }
+    .draftbox textarea { width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono); box-sizing: border-box; }
+
     /* ---- raw event-log pane ---- */
     .rawlog { flex: 0 0 220px; overflow-y: auto; background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; display: none; }
     .rawlog.on { display: block; }
@@ -1413,6 +1426,7 @@
             <div id="permZone" style="display:flex;flex-direction:column;gap:10px;max-height:42%;overflow-y:auto"></div>
             <div class="perm-banner" id="drillPermBanner" style="display:none"></div>
             <div class="composer">
+              <div class="composer-tools"><select id="drillActions" class="act-sel" aria-label="Prepare a saved action"></select></div>
               <textarea id="drillComposer" placeholder="prompt… (Enter to send · Shift+Enter newline)"></textarea>
             </div>
           </div>
@@ -1505,6 +1519,15 @@
           <div class="row"><button class="btn primary" id="addRelayBtn">Add relay</button></div>
           <div style="height:6px"></div>
           <div class="inline-error" id="addRelayError"></div>
+        </div>
+        <div>
+          <div class="section-title">Saved actions</div>
+          <div class="hint">Reusable instructions. Preparing one places an editable draft in the session (structured composer, or a copy box for terminal sessions); nothing is sent until you press Send.</div>
+          <div class="hint" id="actionsStoreHint" style="margin-top:4px"></div>
+          <div class="actions-list" id="actionsList"></div>
+          <div class="row"><button class="btn primary" id="saveActionsBtn">Save actions</button><button class="btn" id="resetActionsBtn">Restore defaults</button></div>
+          <div style="height:6px"></div>
+          <div class="inline-error" id="actionsResult"></div>
         </div>
         <div>
           <div class="section-title">Past sessions</div>
@@ -1788,6 +1811,7 @@
         if (Array.isArray(saved)) for (const r of saved) if (!relays.some((x) => x.url === r.url)) addRelay(r.url, r.token, r.name);
       } catch (e) { console.warn("rehydrate relays failed", e); }
       rehydrating = false;
+      await loadSavedActions();
       await refreshPastSessions();
     }
     async function persistRelays() {
@@ -2265,6 +2289,7 @@
       markSeen(s);
       drillSid = s.id; document.body.classList.add("drilling");
       $("drill").classList.add("open"); syncSidebarActive();
+      bindComposer(s);
       renderDrill(s);
     }
     // Keep an open drill live: every structured frame and lifecycle event for the
@@ -2329,6 +2354,7 @@
       for (const it of A.items) tr.appendChild(renderTranscriptRow(it));
       tr.scrollTop = pinned ? tr.scrollHeight : keep;
       renderPermZone(s);
+      fillActionSelect($("drillActions"), s);
       renderDrillRail(s);
       renderRawLog(s);
       syncDrillControls(s);
@@ -2770,7 +2796,7 @@
       ti.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendInput(sess, ti.value + "\n"); ti.value = ""; } });
       const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
       sendBtn.addEventListener("click", () => { sendInput(sess, ti.value + "\n"); ti.value = ""; ti.focus(); });
-      bar.append(ti, sendBtn);
+      bar.append(actionSelect(sess), ti, sendBtn);
       tile.append(head, repoMount(sess), termEl, bar); $("grid").appendChild(tile);
       const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: true, scrollback: 2000, theme: termTheme(), screenReaderMode: true });
       term.open(termEl); term.onData((d) => sendInput(sess, d));
@@ -3015,7 +3041,7 @@
       ti.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendPrompt(sess, ti.value); ti.value = ""; } });
       const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
       sendBtn.addEventListener("click", () => { sendPrompt(sess, ti.value); ti.value = ""; ti.focus(); });
-      bar.append(ti, sendBtn);
+      bar.append(actionSelect(sess), ti, sendBtn);
       tile.append(head, repoMount(sess), streamEl, bar); $("grid").appendChild(tile);
       Object.assign(sess, { tile, streamEl, dot, ti, sendBtn, cancelBtn: cancel, reattachBtn: reattach });
       syncTileControls(sess);
@@ -3580,7 +3606,7 @@
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
     function renderAll() {
       renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid();
-      syncRepoRows();
+      syncRepoRows(); syncActionControls();
       if (NK) { try { NK.title(sessions.size ? `Menagerie — ${sessions.size} session${sessions.size === 1 ? "" : "s"}` : "Menagerie"); } catch {} }
     }
 
@@ -3608,7 +3634,7 @@
     function closeWorkspaceOverlay() { const ov = $("wsOverlay"); ov.classList.remove("open", "booting"); ov.setAttribute("aria-busy", "false"); }
     function wsError(t) { $("wsErr").textContent = t; }
 
-    function openModal(id) { closeDrawer(); $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") refreshPastSessions(); }
+    function openModal(id) { closeDrawer(); $(id).classList.add("open"); if (id === "spawnScrim") { renderSpawnDialog(); $("spawnResult").textContent = ""; } if (id === "settingsScrim") { refreshPastSessions(); renderActionSettings(); $("actionsResult").textContent = ""; } }
     function closeModal(id) { $(id).classList.remove("open"); }
     function closeAllModals() { document.querySelectorAll(".scrim").forEach((s) => s.classList.remove("open")); }
     function anyModalOpen() { return [...document.querySelectorAll(".scrim")].some((s) => s.classList.contains("open")) || $("wsOverlay").classList.contains("open"); }
@@ -3941,6 +3967,9 @@
 
     // Drill-in wiring.
     $("drillBack").addEventListener("click", closeDrill);
+    $("drillActions").addEventListener("change", (e) => { const id = e.target.value; e.target.value = ""; const s = sessions.get(drillSid); if (id && s) prepareAction(s, id); });
+    $("saveActionsBtn").addEventListener("click", saveActionEdits);
+    $("resetActionsBtn").addEventListener("click", restoreDefaultActions);
     $("drillCancelBtn").addEventListener("click", () => { const s = sessions.get(drillSid); if (s) cancelTurn(s); });
     $("drillReattachBtn").addEventListener("click", () => { const s = sessions.get(drillSid); if (s) reattachSession(s); });
     $("rawlogBtn").addEventListener("click", () => { const el = $("rawlog"); el.classList.toggle("on"); const s = sessions.get(drillSid); if (s) renderRawLog(s); });
@@ -3948,7 +3977,10 @@
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         const s = sessions.get(drillSid);
-        if (s && e.target.value.trim()) { sendPrompt(s, e.target.value.trim()); e.target.value = ""; }
+        // A prompt sent while a decision is pending would be refused (session_blocked);
+        // keep the draft and point at the decision instead.
+        if (s && s.acp && s.acp.pendingPerm) { flashComposer(); return; }
+        if (s && e.target.value.trim()) { sendPrompt(s, e.target.value.trim()); e.target.value = ""; s.draft = ""; }
       }
     });
 
@@ -4159,6 +4191,183 @@
         const key = repoKey(s);
         if (s.repoKey !== key) { s.repoKey = key; renderRepo(s); }
       }
+    }
+
+    // ===== saved actions (G0) =========================================
+    // Reusable instructions. Preparing one NEVER sends: a structured session
+    // gets it appended to its composer as an editable draft; a PTY session gets
+    // an editable draft box with Copy, for deliberate terminal input. The user's
+    // own Send is the only path to the agent. A session waiting on a decision
+    // cannot receive one, so a saved instruction is never read as an approval.
+    // Edits persist through the workspace store (FS: folder or naklios.fs) at
+    // .menagerie/actions.json; in-memory mode keeps them for this tab only.
+    const ACTIONS_FILE = "actions.json";
+    const ACTION_LABEL_MAX = 60, ACTION_TEXT_MAX = 4000;
+    const DEFAULT_ACTIONS = [
+      { id: "review", label: "Review", text: "Review the uncommitted changes and the commits on this branch that are not on its upstream. List bugs, risky changes and missing tests with file and line references. Do not change any files." },
+      { id: "commit", label: "Commit", text: "Commit the current changes. Group them into logical commits with clear messages, and show me the commit list. Do not push." },
+      { id: "commit_push", label: "Commit and push", text: "Commit the current changes with clear messages, then push this branch to its upstream. If the push is rejected, stop and tell me why. Do not force-push." },
+      { id: "pull_request", label: "Prepare a pull request", text: "Prepare a pull request for this branch: a title, what changed and why, how it was tested, and open questions. Show me the draft; do not open the pull request until I confirm." },
+      { id: "resolve_conflicts", label: "Resolve conflicts", text: "Resolve the merge conflicts in this repository. Keep the intent of both sides, explain each resolution, and run the relevant tests. Do not commit until I confirm." },
+      { id: "recap", label: "Recap", text: "Recap this session: what you changed, what you verified and how, what is left, and anything you need from me." },
+      // Handoff templates, used by Inbox → Start session (not offered per session).
+      { id: "work_issue", label: "Work on issue", handoff: true, text: "Work on GitHub issue {ref}: {title}\n{url}\n\nIssue description:\n{body}" },
+      { id: "review_pr", label: "Review PR", handoff: true, text: "Review pull request {ref}: {title}\n{url}\nHead branch: {head}\n\nPull request description:\n{body}\n\nReview only. Do not push to the pull request's branch." },
+    ];
+    let savedActions = DEFAULT_ACTIONS.map((a) => ({ ...a }));
+    let actionsVersion = 1; // bumps on every load/save, so per-session menus rebuild
+
+    const validAction = (a) => !!a && typeof a.id === "string" && typeof a.label === "string" && a.label.trim() !== "" && typeof a.text === "string";
+    // Merge a stored document onto the defaults by id: a known id takes its saved
+    // label and text; an unknown id or a malformed entry is ignored.
+    function parseSavedActions(doc) {
+      if (!doc || !Array.isArray(doc.actions)) return null;
+      const byId = new Map(doc.actions.filter(validAction).map((a) => [a.id, a]));
+      return DEFAULT_ACTIONS.map((d) => {
+        const a = byId.get(d.id);
+        return a ? { ...d, label: a.label.trim().slice(0, ACTION_LABEL_MAX), text: a.text.slice(0, ACTION_TEXT_MAX) } : { ...d };
+      });
+    }
+    async function loadSavedActions() {
+      if (!FS.ok()) return;
+      let doc = null;
+      try { doc = await FS.readJSON([MENAGERIE_DIR, ACTIONS_FILE]); } catch (e) { console.warn("read saved actions failed", e); }
+      const parsed = parseSavedActions(doc);
+      if (parsed) { savedActions = parsed; actionsVersion++; }
+      renderActionSettings(); syncActionControls();
+    }
+    async function persistSavedActions() {
+      if (!FS.ok()) return false;
+      await FS.writeJSON([MENAGERIE_DIR, ACTIONS_FILE], { version: 1, actions: savedActions.map(({ id, label, text }) => ({ id, label, text })) });
+      return true;
+    }
+    function actionsStoreText() {
+      return FS.ok() ? `Stored in ${FS.label} at ${MENAGERIE_DIR}/${ACTIONS_FILE}.`
+        : "In-memory workspace: edits last only until this tab closes. Pick a folder under Workspace to keep them.";
+    }
+    function actionEditor(a) {
+      const box = document.createElement("div"); box.className = "action-edit"; box.dataset.id = a.id;
+      const label = document.createElement("input"); label.className = "act-label"; label.maxLength = ACTION_LABEL_MAX; label.value = a.label;
+      label.setAttribute("aria-label", "Action name");
+      const text = document.createElement("textarea"); text.className = "act-text"; text.maxLength = ACTION_TEXT_MAX; text.value = a.text;
+      text.setAttribute("aria-label", a.label + " instruction text");
+      box.append(label, text);
+      if (a.handoff) {
+        const h = document.createElement("div"); h.className = "hint";
+        h.textContent = "Used by Inbox → Start session. Placeholders: {ref} {title} {url} {body} {head}.";
+        box.appendChild(h);
+      }
+      return box;
+    }
+    function renderActionSettings() {
+      const list = $("actionsList"); if (!list) return;
+      list.replaceChildren(...savedActions.map(actionEditor));
+      $("actionsStoreHint").textContent = actionsStoreText();
+    }
+    function readActionEditors() {
+      return savedActions.map((a) => {
+        const box = $("actionsList").querySelector(`.action-edit[data-id="${a.id}"]`);
+        if (!box) return { ...a };
+        const label = box.querySelector(".act-label").value.trim().slice(0, ACTION_LABEL_MAX);
+        return { ...a, label: label || a.label, text: box.querySelector(".act-text").value.slice(0, ACTION_TEXT_MAX) };
+      });
+    }
+    function showActionsResult(text, ok) { const el = $("actionsResult"); el.textContent = text; el.className = ok ? "inline-ok" : "inline-error"; }
+    async function commitActions(next, verb) {
+      savedActions = next; actionsVersion++;
+      syncActionControls(); renderActionSettings();
+      try {
+        const wrote = await persistSavedActions();
+        showActionsResult(wrote ? `${verb}: ${actionsStoreText()}` : `${verb} for this tab only (in-memory workspace; nothing written to disk).`, true);
+      } catch (e) { showActionsResult("Could not save actions: " + ((e && e.message) || "write failed"), false); }
+    }
+    function saveActionEdits() { return commitActions(readActionEditors(), "Saved"); }
+    function restoreDefaultActions() { return commitActions(DEFAULT_ACTIONS.map((a) => ({ ...a })), "Defaults restored"); }
+
+    // Why this session cannot receive a saved action, or null.
+    function actionBlockReason(s) {
+      if (!s || s.replay) return "replay only";
+      const why = { exited: "session exited", lost: "connection lost", taken: "taken by another client" }[s.status];
+      if (why) return why;
+      if (s.status === "needs_input" || (s.acp && s.acp.pendingPerm)) return "waiting on a decision";
+      return null;
+    }
+    function fillActionSelect(sel, s) {
+      const why = actionBlockReason(s);
+      const key = actionsVersion + "|" + (why || "");
+      if (sel.dataset.key === key) return;
+      sel.dataset.key = key;
+      sel.replaceChildren(new Option(why ? "Actions: " + why : "Actions…", ""));
+      for (const a of savedActions) if (!a.handoff) sel.appendChild(new Option(a.label, a.id));
+      sel.disabled = !!why;
+      sel.title = why ? `Saved actions are unavailable: ${why}. A saved instruction is never used as an approval answer.`
+        : "Prepare a saved action as an editable draft. Nothing is sent until you press Send.";
+    }
+    function actionSelect(s) {
+      const sel = document.createElement("select"); sel.className = "act-sel"; sel.setAttribute("aria-label", "Prepare a saved action");
+      sel.addEventListener("click", (e) => e.stopPropagation());
+      sel.addEventListener("change", () => { const id = sel.value; sel.value = ""; if (id) prepareAction(s, id); });
+      s.actSel = sel; fillActionSelect(sel, s);
+      return sel;
+    }
+    function syncActionControls() {
+      for (const s of sessions.values()) if (s.actSel) fillActionSelect(s.actSel, s);
+      const ds = drillSid && sessions.get(drillSid);
+      if (ds) fillActionSelect($("drillActions"), ds);
+    }
+    function prepareAction(s, id) {
+      const a = savedActions.find((x) => x.id === id && !x.handoff);
+      if (!a || !s) return false;
+      const why = actionBlockReason(s);
+      if (why) { toast(`${a.label} was not prepared: ${why}.`, false); return false; }
+      placeDraft(s, a.text);
+      return true;
+    }
+    // Append on a new line, so an existing draft is kept, never overwritten.
+    function appendDraft(prev, text) { return prev && prev.trim() ? prev.replace(/\s+$/, "") + "\n" + text : text; }
+    function placeDraft(s, text) {
+      if (s.transport === "acp") placeComposerDraft(s, text);
+      else openPtyDraft(s, text);
+    }
+    // The drill composer is shared by every structured session, so its text is
+    // kept per session: switching sessions stashes one draft and loads the other.
+    let composerSid = null;
+    function bindComposer(s) {
+      if (composerSid === s.id) return;
+      const ta = $("drillComposer");
+      const prev = composerSid && sessions.get(composerSid);
+      if (prev) prev.draft = ta.value;
+      ta.value = s.draft || "";
+      composerSid = s.id;
+    }
+    function placeComposerDraft(s, text) {
+      if (drillSid !== s.id || !drillOpen()) openDrill(s);
+      const ta = $("drillComposer");
+      ta.value = appendDraft(ta.value, text); s.draft = ta.value;
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+      flashComposer();
+    }
+    // PTY: an editable draft box with Copy. Nothing is typed into the terminal.
+    function openPtyDraft(s, text) {
+      s.ptyDraft = appendDraft(s.ptyDraft || "", text);
+      const old = $("ptyDraftScrim"); if (old) old.remove();
+      const scrim = document.createElement("div"); scrim.className = "scrim open"; scrim.id = "ptyDraftScrim"; scrim.style.zIndex = "120";
+      scrim.innerHTML = `<div class="modal draftbox" role="dialog" aria-modal="true" aria-label="Draft for terminal session">
+        <header><h2></h2><span class="spacer"></span><button class="btn icon ghost" data-x aria-label="Close">✕</button></header>
+        <div class="body">
+          <p class="hint">Edit the draft, then copy it and paste it into the terminal yourself. Nothing is typed into the session for you.</p>
+          <textarea aria-label="Draft text"></textarea>
+          <div class="row" style="justify-content:flex-end"><button class="btn" data-clear>Clear</button><button class="btn primary copybtn-draft">Copy</button></div>
+        </div></div>`;
+      scrim.querySelector("h2").textContent = "Draft for " + s.agent;
+      const ta = scrim.querySelector("textarea"); ta.value = s.ptyDraft;
+      ta.addEventListener("input", () => { s.ptyDraft = ta.value; });
+      scrim.querySelector("[data-clear]").addEventListener("click", () => { ta.value = ""; s.ptyDraft = ""; ta.focus(); });
+      const copy = scrim.querySelector(".copybtn-draft");
+      copy.addEventListener("click", () => copyText(ta.value, copy));
+      scrim.addEventListener("click", (e) => { if (e.target === scrim || e.target.hasAttribute("data-x")) scrim.remove(); });
+      document.body.appendChild(scrim);
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
     }
 
     // Test/demo seam for /guide-nt + /walkthrough-nt. Deliberately does NOT expose
@@ -4557,6 +4766,11 @@
               // Snapshots carry results only — never a session token.
               refreshGit(id) { const s = sessions.get(id); if (!s) return "none"; refreshGit(s); return "ok"; },
               repoSnapshot(id) { const s = sessions.get(id); return s && s.repo ? JSON.parse(JSON.stringify({ git: s.repo.git, pr: s.repo.pr, open: s.repo.open })) : null; },
+              // Saved actions: the list, a prepare as the menu does it, and the
+              // resulting drafts (never sent; these read what the user would edit).
+              savedActions() { return savedActions.map((a) => ({ ...a })); },
+              prepareAction(id, actionId) { return prepareAction(sessions.get(id), actionId); },
+              drafts(id) { const s = sessions.get(id); if (!s) return null; return { composer: drillSid === id ? $("drillComposer").value : (s.draft || ""), pty: s.ptyDraft || "" }; },
               pendingReads() { return [...pendingReads.entries()].map(([request_id, p]) => ({ request_id, relayId: p.relayId, sessionId: p.sessionId })); },
               // Reach the fake relay's hello (to vary advertised capabilities).
               _relayHello() { const r = relays.find((x) => x.id === "fake"); return r && r.hello; },
