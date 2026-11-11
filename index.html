@@ -1303,6 +1303,15 @@
     .repo-file .code { flex: 0 0 auto; width: 2.4em; color: var(--accent-text); white-space: pre; }
     .repo-file .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .repo-muted { color: var(--faint); }
+    .repo-pr { border-top: 1px solid var(--border); padding-top: 4px; display: flex; flex-direction: column; gap: 3px; }
+    .repo-pr > .repo-line { padding: 0; }
+    .repo-pr a { color: var(--accent-text); }
+    .repo-checks { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chk { border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: 10.5px; }
+    .chk-pass { color: var(--green); } .chk-fail { color: var(--red); } .chk-pending { color: var(--yellow); }
+    .chk-skipping, .chk-cancel, .chk-other { color: var(--faint); }
+    .repo-checklist summary { cursor: pointer; color: var(--muted); }
+    .repo-check { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 
     /* ---- saved actions (G0) ---- */
     .act-sel { max-width: 130px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px; font-size: 12px; }
@@ -2091,6 +2100,7 @@
       // Protocol 1.5 reads: each result settles the request that asked for it.
       git_status_result(relay, msg) { onReadResult(relay, msg); },
       github_inbox_result(relay, msg) { onReadResult(relay, msg); },
+      session_pr_result(relay, msg) { onReadResult(relay, msg); },
       github_item_result(relay, msg) { onReadResult(relay, msg); },
     };
     // A replayed permission request (seq -1) is only a live decision if the
@@ -4201,6 +4211,7 @@
       const box = document.createElement("div"); box.className = "repo-detail";
       if (R.git && R.git.state === "ok") box.appendChild(gitFileList(R.git));
       else { const h = document.createElement("div"); h.className = "repo-muted"; h.textContent = R.git ? readStateText(R.git.state) : "Press ↻ to read Git status."; box.appendChild(h); }
+      if (sessionAdvertises(s, CAP_PR)) box.appendChild(prSection(s, R));
       return box;
     }
     const GIT_LETTER = { ".": "unchanged", M: "modified", A: "added", D: "deleted", R: "renamed", C: "copied", U: "unmerged", "?": "untracked", T: "type changed", "!": "ignored" };
@@ -4613,6 +4624,93 @@
       placeDraft(sess, text);
     }
 
+    // ===== session pull request + checks (G1, session_pr_v1) ==========
+    // A "Pull request" section inside the repository panel, with its own
+    // explicit refresh. Links open in a new tab; the browser never fetches them.
+    const CHECK_BUCKETS = ["pass", "fail", "pending", "skipping", "cancel"];
+    const REVIEW_TEXT = { APPROVED: "approved", CHANGES_REQUESTED: "changes requested", REVIEW_REQUIRED: "review required" };
+    function refreshPr(s) {
+      const R = repoState(s);
+      if (R.prLoading || repoReadBlock(s) || !sessionAdvertises(s, CAP_PR)) return;
+      R.prLoading = true; renderRepo(s);
+      sendRead(relayOf(s), { type: "session_pr", session_id: s.id, session_token: s.token }, s.id, (msg) => {
+        R.prLoading = false; R.pr = msg; renderRepo(s);
+      });
+    }
+    function prSection(s, R) {
+      const sec = document.createElement("div"); sec.className = "repo-pr";
+      const head = document.createElement("div"); head.className = "repo-line";
+      const t = document.createElement("span"); t.className = "repo-sum"; t.textContent = "Pull request";
+      head.append(t, refreshBtn(s, R.prLoading, () => refreshPr(s), "Read pull request and checks"));
+      sec.append(head, prBody(R));
+      return sec;
+    }
+    function prBody(R) {
+      const r = R.pr;
+      const box = document.createElement("div");
+      if (!r || r.state !== "ok" || !r.pr) {
+        box.className = "repo-muted";
+        box.textContent = prStatusText(R);
+        return box;
+      }
+      box.append(prHeadline(r.pr), checksSummary(r), checksList(r, R));
+      return box;
+    }
+    function prStatusText(R) {
+      if (R.prLoading) return "Reading the pull request…";
+      if (!R.pr) return "Press ↻ to read the pull request for this branch.";
+      return readStateText(R.pr.state === "ok" ? "unavailable" : R.pr.state);
+    }
+    function prHeadline(pr) {
+      const line = document.createElement("div"); line.className = "repo-prline";
+      line.appendChild(extLink("#" + count(pr.number), pr.url));
+      const bits = [shortStr(pr.state || "unknown state", 20)];
+      if (pr.draft) bits.push("draft");
+      if (pr.review_decision) bits.push(REVIEW_TEXT[pr.review_decision] || shortStr(String(pr.review_decision).toLowerCase(), 40));
+      if (pr.cross_repository) bits.push("from another repository");
+      line.appendChild(document.createTextNode(" " + bits.join(" · ")));
+      return line;
+    }
+    function bucketCounts(r) {
+      const sum = r.summary && typeof r.summary === "object" ? r.summary : null;
+      const checks = Array.isArray(r.checks) ? r.checks : [];
+      const out = {};
+      for (const b of CHECK_BUCKETS) out[b] = sum ? count(sum[b]) : checks.filter((c) => c && c.bucket === b).length;
+      return out;
+    }
+    function checksSummary(r) {
+      const el = document.createElement("div"); el.className = "repo-checks";
+      const n = bucketCounts(r);
+      if (!CHECK_BUCKETS.some((b) => n[b] > 0)) { el.textContent = "No checks reported."; return el; }
+      for (const b of CHECK_BUCKETS) {
+        if (!n[b]) continue;
+        const c = document.createElement("span"); c.className = "chk chk-" + b; c.textContent = `${n[b]} ${b}`;
+        el.appendChild(c);
+      }
+      return el;
+    }
+    function checksList(r, R) {
+      const checks = Array.isArray(r.checks) ? r.checks.slice(0, 100) : [];
+      const d = document.createElement("details"); d.className = "repo-checklist";
+      d.open = !!R.checksOpen;
+      d.addEventListener("toggle", () => { R.checksOpen = d.open; });
+      const sm = document.createElement("summary");
+      const total = Math.max(count(r.checks_total), checks.length);
+      sm.textContent = `${checks.length} check${checks.length === 1 ? "" : "s"}` + (r.truncated || total > checks.length ? ` (showing ${checks.length} of ${total})` : "");
+      d.appendChild(sm);
+      for (const c of checks) d.appendChild(checkRow(c && typeof c === "object" ? c : {}));
+      return d;
+    }
+    function checkRow(c) {
+      const row = document.createElement("div"); row.className = "repo-check";
+      const b = document.createElement("span");
+      b.className = "chk chk-" + (CHECK_BUCKETS.includes(c.bucket) ? c.bucket : "other");
+      b.textContent = shortStr(c.state || c.bucket || "unknown", 20);
+      const wf = document.createElement("span"); wf.className = "repo-muted"; wf.textContent = c.workflow ? shortStr(c.workflow, 80) : "";
+      row.append(b, extLink(shortStr(c.name || "check", 120), c.link), wf);
+      return row;
+    }
+
     // Test/demo seam for /guide-nt + /walkthrough-nt. Deliberately does NOT expose
     // the live `relays`/`sessions` (they carry registration + session tokens) — the
     // seam methods reach them through closure, so nothing on the page can read a
@@ -5008,6 +5106,8 @@
               // Protocol 1.5 repository reads, driven as the ↻ buttons drive them.
               // Snapshots carry results only — never a session token.
               refreshGit(id) { const s = sessions.get(id); if (!s) return "none"; refreshGit(s); return "ok"; },
+              refreshPr(id) { const s = sessions.get(id); if (!s) return "none"; refreshPr(s); return "ok"; },
+              openRepoPanel(id) { const s = sessions.get(id); if (!s) return "none"; repoState(s).open = true; renderRepo(s); return "ok"; },
               repoSnapshot(id) { const s = sessions.get(id); return s && s.repo ? JSON.parse(JSON.stringify({ git: s.repo.git, pr: s.repo.pr, open: s.repo.open })) : null; },
               // Saved actions: the list, a prepare as the menu does it, and the
               // resulting drafts (never sent; these read what the user would edit).
