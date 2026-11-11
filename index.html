@@ -1287,6 +1287,23 @@
     .hunk.h-approved h4 { color: var(--green); } .hunk.h-rejected h4 { color: var(--red); }
     .cmdline { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 6px; padding: 6px 9px; margin: 6px 10px 9px; white-space: pre-wrap; word-break: break-word; }
 
+    /* ---- repository context (protocol 1.5, capability-gated) ---- */
+    .repo { border-bottom: 1px solid var(--border); background: var(--panel); font-size: 11.5px; }
+    .repo[hidden] { display: none; }
+    .repo-line { display: flex; align-items: center; gap: 6px; padding: 3px 9px; min-width: 0; }
+    .repo-sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: var(--mono); }
+    .repo-btn { background: none; border: 1px solid transparent; color: var(--muted); border-radius: 5px; padding: 0 6px; font-size: 12px; line-height: 18px; cursor: pointer; }
+    .repo-btn:hover:not(:disabled) { border-color: var(--border); color: var(--text); }
+    .repo-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .repo-detail { max-height: 140px; overflow-y: auto; padding: 2px 9px 6px; display: flex; flex-direction: column; gap: 6px; }
+    #drillRepo { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    #drillRepo .repo-detail { max-height: 220px; }
+    .repo-files { font-family: var(--mono); font-size: 11px; display: flex; flex-direction: column; }
+    .repo-file { display: flex; gap: 8px; min-width: 0; }
+    .repo-file .code { flex: 0 0 auto; width: 2.4em; color: var(--accent-text); white-space: pre; }
+    .repo-file .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .repo-muted { color: var(--faint); }
+
     /* ---- raw event-log pane ---- */
     .rawlog { flex: 0 0 220px; overflow-y: auto; background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; display: none; }
     .rawlog.on { display: block; }
@@ -1385,6 +1402,7 @@
           <button class="btn icon ghost" id="rawlogBtn" title="Raw event log (d)" aria-label="Toggle raw event log">{}</button>
         </div>
         <div class="instrbar" id="instrumentBar"></div>
+        <div class="repo" id="drillRepo" hidden></div>
         <div class="drill-cols">
           <aside class="drill-rail">
             <div class="sb-title">Sessions</div>
@@ -1843,7 +1861,7 @@
       ws.addEventListener("close", () => {
         if (relay.gen !== gen || relay.removed) return; // superseded by a newer socket, or relay removed
         if (relay.status === "error") { renderAll(); return; } // auth failure: don't auto-retry
-        relay.status = "connecting"; markRelaySessionsLost(relay); failWaitsForRelay(relay.id); scheduleReconnect(relay); renderAll();
+        relay.status = "connecting"; markRelaySessionsLost(relay); failWaitsForRelay(relay.id); failReadsForRelay(relay.id); scheduleReconnect(relay); renderAll();
       });
       ws.addEventListener("error", () => {});
     }
@@ -1865,7 +1883,7 @@
     function send(relay, obj) { if (relay.ws && relay.ws.readyState === WebSocket.OPEN) relay.ws.send(JSON.stringify(obj)); }
     function removeRelay(id) {
       const i = relays.findIndex((r) => r.id === id); if (i < 0) return;
-      relays[i].removed = true; clearTimeout(relays[i].retryTimer);
+      relays[i].removed = true; clearTimeout(relays[i].retryTimer); failReadsForRelay(id);
       try { if (relays[i].ws) relays[i].ws.close(); } catch {}
       // Tear down this relay's tiles — they can't reconnect once the relay is gone.
       // Snapshot first: destroyTile deletes from `sessions` mid-iteration.
@@ -2003,9 +2021,11 @@
         renderStreamTile(s);
         if ($("drill").classList.contains("open") && drillSid === s.id) renderDrill(s);
       },
-      error(relay, msg) { handleErrorFrame(relay, msg); },
+      error(relay, msg) { if (!errorForRead(relay, msg)) handleErrorFrame(relay, msg); },
       resume_failed() {},
       waited(relay, msg) { settleWait(msg.wait_id, { session_id: msg.session_id, state: msg.state, timed_out: !!msg.timed_out }); },
+      // Protocol 1.5 reads: each result settles the request that asked for it.
+      git_status_result(relay, msg) { onReadResult(relay, msg); },
     };
     // A replayed permission request (seq -1) is only a live decision if the
     // relay's own tracked status at attach said so; otherwise it is history.
@@ -2262,7 +2282,7 @@
       });
     }
     function closeDrill() {
-      drillSid = null; document.body.classList.remove("drilling");
+      drillSid = null; drillRepoFor = null; document.body.classList.remove("drilling");
       $("drill").classList.remove("open"); $("rawlog").classList.remove("on");
     }
     function composerHasText() { const ta = $("drillComposer"); return ta && ta.value.length > 0; }
@@ -2299,6 +2319,7 @@
       const A = s.acp;
       $("drillTitle").innerHTML = `${escapeHtml(s.agent)} <span class="sub">· ${escapeHtml(s.relayName)}${s.cwd ? " · " + escapeHtml(s.cwd) : ""}</span>`;
       renderInstrumentBar(s);
+      fillDrillRepo(s, false);
       const tr = $("transcript");
       // Follow the tail only if the reader was already at it; a reader scrolled up
       // through history keeps their place across live re-renders.
@@ -2750,7 +2771,7 @@
       const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
       sendBtn.addEventListener("click", () => { sendInput(sess, ti.value + "\n"); ti.value = ""; ti.focus(); });
       bar.append(ti, sendBtn);
-      tile.append(head, termEl, bar); $("grid").appendChild(tile);
+      tile.append(head, repoMount(sess), termEl, bar); $("grid").appendChild(tile);
       const term = new window.Terminal({ fontFamily: TERM_FONT, fontSize: TERM_SIZE, lineHeight: TERM_LH, cursorBlink: true, scrollback: 2000, theme: termTheme(), screenReaderMode: true });
       term.open(termEl); term.onData((d) => sendInput(sess, d));
       Object.assign(sess, { term, tile, termEl, dot, ti, sendBtn, reattachBtn: reattach });
@@ -2995,7 +3016,7 @@
       const sendBtn = document.createElement("button"); sendBtn.className = "btn primary"; sendBtn.textContent = "Send";
       sendBtn.addEventListener("click", () => { sendPrompt(sess, ti.value); ti.value = ""; ti.focus(); });
       bar.append(ti, sendBtn);
-      tile.append(head, streamEl, bar); $("grid").appendChild(tile);
+      tile.append(head, repoMount(sess), streamEl, bar); $("grid").appendChild(tile);
       Object.assign(sess, { tile, streamEl, dot, ti, sendBtn, cancelBtn: cancel, reattachBtn: reattach });
       syncTileControls(sess);
       sess.timer = setInterval(() => updateTimer(sess), 1000); updateTimer(sess);
@@ -3559,6 +3580,7 @@
     // NOT here — rebuilding its <select>s on every message glitches the dropdown mid-interaction.
     function renderAll() {
       renderSidebar(); renderRelayList(); updateEmpty(); updateKeybar(); updateTreeToggle(); regroupGrid();
+      syncRepoRows();
       if (NK) { try { NK.title(sessions.size ? `Menagerie — ${sessions.size} session${sessions.size === 1 ? "" : "s"}` : "Menagerie"); } catch {} }
     }
 
@@ -3929,6 +3951,215 @@
         if (s && e.target.value.trim()) { sendPrompt(s, e.target.value.trim()); e.target.value = ""; }
       }
     });
+
+    // ===== repository + GitHub context (protocol 1.5, capability-gated) =====
+    // Read-only. A request goes only to a relay whose hello.capabilities names
+    // it; a relay without the name shows nothing new. Refresh is always a click:
+    // the only timer here is each request's reply deadline, never a poll. Reads
+    // never touch session status, control or the `done` badge (no markSeen, no
+    // setSessionStatus). Every repository or GitHub string reaches the DOM
+    // through textContent or a text node, never innerHTML.
+    const CAP_GIT = "session_git_v1", CAP_PR = "session_pr_v1";
+    const READ_TIMEOUT_MS = 30000;
+    const READ_PREFIX = { git_status: "g", session_pr: "p", github_inbox: "i", github_item: "i" };
+    const pendingReads = new Map(); // request_id → { relayId, sessionId, onResult, timer }
+    let readSeq = 0;
+
+    // hello.capabilities is kept on relay.hello (set by the hello handler).
+    function relayCaps(relay) {
+      const c = relay && relay.hello && relay.hello.capabilities;
+      return Array.isArray(c) ? c.filter((x) => typeof x === "string") : [];
+    }
+    function relayAdvertises(relay, name) { return relayCaps(relay).includes(name); }
+    function relayOf(s) { return (s && relays.find((r) => r.id === s.relayId)) || null; }
+    function sessionAdvertises(s, name) { return !!s && !s.replay && relayAdvertises(relayOf(s), name); }
+
+    function newRequestId(type) { readSeq += 1; return `${READ_PREFIX[type] || "r"}-${readSeq}-${crypto.randomUUID().slice(0, 8)}`; }
+    // Send one read; `onResult` runs exactly once, with the relay's result or a
+    // local state (timeout, not_connected, invalid_token) carrying no data.
+    function sendRead(relay, frame, sessionId, onResult) {
+      const request_id = newRequestId(frame.type);
+      const timer = setTimeout(() => settleRead(request_id, { state: "timeout", local: true }), READ_TIMEOUT_MS);
+      pendingReads.set(request_id, { relayId: relay.id, sessionId: sessionId || null, onResult, timer });
+      send(relay, { ...frame, request_id });
+      return request_id;
+    }
+    function settleRead(requestId, msg) {
+      const p = pendingReads.get(requestId); if (!p) return false;
+      pendingReads.delete(requestId); clearTimeout(p.timer);
+      try { p.onResult(msg); } catch (e) { console.warn("read result render failed", e); }
+      return true;
+    }
+    // A result counts only from the relay (and session) the request went to; a
+    // late or foreign request_id is dropped.
+    function onReadResult(relay, msg) {
+      const p = typeof msg.request_id === "string" ? pendingReads.get(msg.request_id) : null;
+      if (!p || p.relayId !== relay.id) return;
+      if (p.sessionId && msg.session_id !== p.sessionId) return;
+      settleRead(msg.request_id, msg);
+    }
+    function failReadsForRelay(relayId) {
+      for (const [id, p] of pendingReads) if (p.relayId === relayId) settleRead(id, { state: "not_connected", local: true });
+    }
+    // error{invalid_token} for a session with a read in flight: that read ends
+    // with no data, and the toast the generic path would raise is not needed.
+    function errorForRead(relay, msg) {
+      if (msg.code !== "invalid_token" || !msg.session_id) return false;
+      let hit = false;
+      for (const [id, p] of pendingReads) {
+        if (p.relayId === relay.id && p.sessionId === msg.session_id) { settleRead(id, { state: "invalid_token", local: true }); hit = true; }
+      }
+      return hit;
+    }
+
+    const READ_STATE_TEXT = {
+      not_repository: "Not a Git repository.",
+      no_directory: "The runtime recorded no directory for this session.",
+      unavailable: "Repository status is unavailable.",
+      timeout: "Timed out: no reply from the runtime.",
+      busy: "The runtime is busy with other reads; try again shortly.",
+      gh_missing: "GitHub CLI (gh) is not installed on the runtime machine.",
+      not_authenticated: "gh is not logged in on the runtime machine (run gh auth login there).",
+      rate_limited: "GitHub rate limit reached; try again later.",
+      no_remote: "This repository has no GitHub remote.",
+      no_pr: "No pull request for this branch.",
+      not_found: "Not found on GitHub.",
+      invalid_token: "The session token was refused; re-attach, then refresh.",
+      not_connected: "The relay is not connected.",
+    };
+    function readStateText(state) { return READ_STATE_TEXT[state] || `Unavailable (state: ${shortStr(state || "none", 40)}).`; }
+    function shortStr(v, n) { const t = String(v); return t.length > n ? t.slice(0, n - 1) + "…" : t; }
+    const count = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+
+    // ---- per-session Git panel (session_git_v1) ----
+    function repoState(s) { return s.repo || (s.repo = { git: null, gitLoading: false, pr: null, prLoading: false, open: false, checksOpen: false }); }
+    // Why a read cannot be sent for this session right now, or null.
+    function repoReadBlock(s) {
+      if (s.replay) return "replay only";
+      const why = { exited: "session exited", lost: "connection lost", taken: "another client took this session" }[s.status];
+      if (why) return why;
+      const relay = relayOf(s);
+      return (relay && relay.status === "connected" && s.token) ? null : "relay not connected";
+    }
+    function refreshGit(s) {
+      const R = repoState(s);
+      if (R.gitLoading || repoReadBlock(s) || !sessionAdvertises(s, CAP_GIT)) return;
+      R.gitLoading = true; renderRepo(s);
+      sendRead(relayOf(s), { type: "git_status", session_id: s.id, session_token: s.token }, s.id, (msg) => {
+        R.gitLoading = false; R.git = msg; renderRepo(s);
+      });
+    }
+    function repoMount(s) {
+      const el = document.createElement("div"); el.className = "repo";
+      s.repoEl = el; fillRepo(el, s);
+      return el;
+    }
+    function renderRepo(s) {
+      if (s.repoEl) fillRepo(s.repoEl, s);
+      if (s.repoEl && s.term) setTimeout(() => fitTile(s), 30); // the panel height changed under the terminal
+      fillDrillRepo(s, true);
+    }
+    // The drill re-renders on every streamed frame; rebuild its repository
+    // panel only when the drilled session or that session's panel changed.
+    let drillRepoFor = null;
+    function fillDrillRepo(s, force) {
+      if (drillSid !== s.id || !drillOpen()) return;
+      if (!force && drillRepoFor === s.id + "|" + repoKey(s)) return;
+      drillRepoFor = s.id + "|" + repoKey(s);
+      fillRepo($("drillRepo"), s);
+    }
+    function fillRepo(el, s) {
+      el.replaceChildren();
+      const show = sessionAdvertises(s, CAP_GIT);
+      el.hidden = !show;
+      if (!show) return;
+      const R = repoState(s);
+      el.appendChild(repoLine(s, R));
+      if (R.open) el.appendChild(repoDetail(s, R));
+    }
+    function repoBtn(text, title, fn) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "repo-btn";
+      b.textContent = text; b.title = title; b.setAttribute("aria-label", title);
+      b.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+      return b;
+    }
+    function refreshBtn(s, loading, fn, what) {
+      const why = repoReadBlock(s);
+      const b = repoBtn(loading ? "…" : "↻", why ? `${what} (unavailable: ${why})` : what, fn);
+      b.disabled = !!why || loading;
+      return b;
+    }
+    function repoLine(s, R) {
+      const line = document.createElement("div"); line.className = "repo-line";
+      const toggle = repoBtn(R.open ? "▾" : "▸", R.open ? "Hide repository details" : "Show repository details", () => { R.open = !R.open; renderRepo(s); });
+      toggle.setAttribute("aria-expanded", R.open ? "true" : "false");
+      const sum = document.createElement("span"); sum.className = "repo-sum";
+      sum.textContent = gitSummary(R); sum.title = sum.textContent;
+      line.append(toggle, sum, refreshBtn(s, R.gitLoading, () => refreshGit(s), "Read Git status"));
+      return line;
+    }
+    function gitSummary(R) {
+      const g = R.git;
+      if (R.gitLoading && !g) return "⎇ reading repository…";
+      if (!g) return "⎇ repository · press ↻ to read Git status";
+      if (g.state !== "ok") return "⎇ " + readStateText(g.state);
+      return "⎇ " + [gitHeadText(g), gitUpstreamText(g), gitChangesText(g)].join(" · ");
+    }
+    function gitHeadText(g) {
+      if (g.detached) return "detached at " + shortStr(g.head || "unknown", 14);
+      if (g.unborn) return (g.branch ? shortStr(g.branch, 60) + ", " : "") + "no commits yet";
+      return shortStr(g.branch || "unknown branch", 60);
+    }
+    function gitUpstreamText(g) {
+      if (!g.upstream) return "no upstream";
+      return `${shortStr(g.upstream, 60)} ↑${count(g.ahead)} ↓${count(g.behind)}`;
+    }
+    function gitChangesText(g) {
+      const n = Number.isFinite(g.files_total) ? count(g.files_total) : (Array.isArray(g.files) ? g.files.length : 0);
+      return n === 0 ? "clean" : `${n} changed`;
+    }
+    function repoDetail(s, R) {
+      const box = document.createElement("div"); box.className = "repo-detail";
+      if (R.git && R.git.state === "ok") box.appendChild(gitFileList(R.git));
+      else { const h = document.createElement("div"); h.className = "repo-muted"; h.textContent = R.git ? readStateText(R.git.state) : "Press ↻ to read Git status."; box.appendChild(h); }
+      return box;
+    }
+    const GIT_LETTER = { ".": "unchanged", M: "modified", A: "added", D: "deleted", R: "renamed", C: "copied", U: "unmerged", "?": "untracked", T: "type changed", "!": "ignored" };
+    const statusLetter = (v) => (typeof v === "string" && v ? v.slice(0, 1) : "?");
+    function gitFileList(g) {
+      const files = Array.isArray(g.files) ? g.files.slice(0, 200) : [];
+      const list = document.createElement("div"); list.className = "repo-files";
+      if (!files.length) { list.textContent = "Working tree clean."; return list; }
+      for (const f of files) list.appendChild(gitFileRow(f && typeof f === "object" ? f : {}));
+      const total = Math.max(count(g.files_total), files.length);
+      if (g.truncated || total > files.length) {
+        const more = document.createElement("div"); more.className = "repo-muted";
+        more.textContent = `Showing ${files.length} of ${total} changed files.`;
+        list.appendChild(more);
+      }
+      return list;
+    }
+    function gitFileRow(f) {
+      const row = document.createElement("div"); row.className = "repo-file";
+      const ix = statusLetter(f.index), wt = statusLetter(f.worktree);
+      const code = document.createElement("span"); code.className = "code";
+      code.textContent = ix + wt;
+      code.title = `staged: ${GIT_LETTER[ix] || ix} · worktree: ${GIT_LETTER[wt] || wt}`;
+      const path = document.createElement("span"); path.className = "path";
+      path.textContent = String(f.path || ""); path.title = path.textContent;
+      row.append(code, path);
+      return row;
+    }
+    // Cheap visibility key; renderAll re-renders a session's panel only when it
+    // changes (a relay gains or loses the capability, or reads become possible).
+    function repoKey(s) { return [sessionAdvertises(s, CAP_GIT), sessionAdvertises(s, CAP_PR), repoReadBlock(s) || ""].join("|"); }
+    function syncRepoRows() {
+      for (const s of sessions.values()) {
+        if (!s.repoEl) continue;
+        const key = repoKey(s);
+        if (s.repoKey !== key) { s.repoKey = key; renderRepo(s); }
+      }
+    }
 
     // Test/demo seam for /guide-nt + /walkthrough-nt. Deliberately does NOT expose
     // the live `relays`/`sessions` (they carry registration + session tokens) — the
@@ -4322,6 +4553,11 @@
                     transport: s2.transport, status: s2.status, agentSessionId: s2.agentSessionId || null })),
                 };
               },
+              // Protocol 1.5 repository reads, driven as the ↻ buttons drive them.
+              // Snapshots carry results only — never a session token.
+              refreshGit(id) { const s = sessions.get(id); if (!s) return "none"; refreshGit(s); return "ok"; },
+              repoSnapshot(id) { const s = sessions.get(id); return s && s.repo ? JSON.parse(JSON.stringify({ git: s.repo.git, pr: s.repo.pr, open: s.repo.open })) : null; },
+              pendingReads() { return [...pendingReads.entries()].map(([request_id, p]) => ({ request_id, relayId: p.relayId, sessionId: p.sessionId })); },
               // Reach the fake relay's hello (to vary advertised capabilities).
               _relayHello() { const r = relays.find((x) => x.id === "fake"); return r && r.hello; },
               // Seed a past-session meta file without having run a session.
