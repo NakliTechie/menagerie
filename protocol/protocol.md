@@ -299,7 +299,7 @@ Rules shared by every 1.5 request:
   or GitHub. Refresh is explicit; nothing polls.
 - A wrong session token returns `error{invalid_token}` and no data. Any other failure is a
   result with a non-`ok` `state` and no command stderr, credentials or configuration.
-- Results are bounded: lists carry a `*_total` count and a `truncated` flag.
+- Results are bounded and carry a `truncated` flag. The Git file list and the check list also carry a total (`files_total`, `checks_total`); inbox lanes carry only `truncated`. Non-`ok` results may omit their lists.
 
 `state` values: `ok`; `not_repository`; `no_directory` (the runtime did not record a
 directory, e.g. an adopted tmux session); `unavailable` (any other failure); `timeout`;
