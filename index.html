@@ -32,13 +32,25 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=11cabad477515b27cb818c3109bcf0f06a92c9f0dd2212d40c1b8fc1b87cb90b — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=3fb0c7a88cbd09de7e509aa11894b17d0d4b8759dfd5de49fc01a897a111db1a — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
- * Drop this file into your app's <head> or copy its contents inline. The
- * surface is a no-op when the app loads standalone (window.parent === window),
- * so the same source works in both contexts:
+ * Load this file in your app's <head>. The surface is a no-op when the app
+ * loads standalone (window.parent === window), so the same source works in both
+ * contexts.
+ *
+ * Use this canonical file, unedited, and nothing else. There are three supported
+ * ways: a <script src> to https://naklios.dev/sdk/naklios.js, this file shipped
+ * beside your page, or this file inlined between the naklios-sdk markers by
+ * scripts/vendor-naklios-sdk.mjs, refreshed by the daily vendor-sdk workflow.
+ * Do not write your own window.naklios, do not edit a copy, and do not post
+ * naklios:* messages by hand. A private copy misses every later host change:
+ * Draft and Reckon kept their own copies and missed the 2026-11-10 fix that keeps
+ * a file call alive while the host shows a storage prompt. If your app needs
+ * something the SDK lacks, add it to sdk/naklios.js in the NakliOS repo, so that
+ * every app receives it. The NakliOS gate (scripts/test-sdk-canonical-only.mjs)
+ * refuses a mirrored app that talks to the host any other way.
  *
  * Vendoring: if your app needs a capability an iframe sandbox blocks — a folder
  * picker above all — the supported route is a manifest-declared same-origin
