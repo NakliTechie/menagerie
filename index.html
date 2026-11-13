@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=3fb0c7a88cbd09de7e509aa11894b17d0d4b8759dfd5de49fc01a897a111db1a — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=ab75d9e38c40f8b74675be1cc8672d259951d5a31f8bf32bbe8065f2680c120d — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -796,7 +796,8 @@
                 msg.type === 'naklios:review:reply' || msg.type === 'naklios:commands:reply' ||
                 msg.type === 'naklios:rag:reply' || msg.type === 'naklios:net:reply' ||
                 msg.type === 'naklios:tex:reply' || msg.type === 'naklios:web:reply' ||
-                msg.type === 'naklios:skills:reply' || msg.type === 'naklios:ai:reply') && msg.requestId) {
+                msg.type === 'naklios:skills:reply' || msg.type === 'naklios:ai:reply' ||
+                msg.type === 'naklios:browser:reply') && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
       if (!p) return;
       pendingRpc.delete(msg.requestId);
@@ -994,6 +995,18 @@
         delete:     function (path)       { return rpc('naklios:sysfs:delete', fsPayload({ path: path })); },
         exists:     function (path)       { return rpc('naklios:sysfs:exists', fsPayload({ path: path })); },
       },
+    },
+    // Ask the host to open a web address in its Browser window, signed in with the person's Chrome
+    // sessions when the companion extension is installed. The host asks the person first. Answers true
+    // when it opened (in the window or, without the extension, a new tab). Standalone: opens a new tab.
+    experimental_openUrl: function (url) {
+      var href = String(url || '');
+      if (!/^https?:\/\//i.test(href)) return Promise.reject(new Error('openUrl takes an http(s) address'));
+      if (!inNakliOS) {
+        try { window.open(href, '_blank', 'noopener'); } catch (_) {}
+        return Promise.resolve(true);
+      }
+      return rpc('naklios:browser:open', { url: href });
     },
     files: {
       experimental_editInAnvil: function (request) {
