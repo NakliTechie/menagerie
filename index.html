@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=763a27e34efd56720b4af4fed7180794b99d48ab8bb3dae885d38609726c7cf0 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=f8ef6defba95383e36d0155a48d661c37091e9f8bded15686a06f04271d229ed — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -267,6 +267,7 @@
   var COMMAND_CALL_TIMEOUT_MS = 300000;
   var AI_LOCAL_TIMEOUT_MS = 300000;
 
+  var taskDueHandlers = new Set();
   function rpc(type, payload, timeoutMs) {
     if (!inNakliOS) return Promise.reject(new Error('Not hosted — naklios.* unavailable standalone'));
     return new Promise(function (resolve, reject) {
@@ -806,6 +807,7 @@
                 msg.type === 'naklios:rag:reply' || msg.type === 'naklios:net:reply' ||
                 msg.type === 'naklios:tex:reply' || msg.type === 'naklios:web:reply' ||
                 msg.type === 'naklios:skills:reply' || msg.type === 'naklios:ai:reply' ||
+                msg.type === 'naklios:tasks:reply' ||
                 msg.type === 'naklios:browser:reply') && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
       if (!p) return;
@@ -813,6 +815,9 @@
       if (p.timer) clearTimeout(p.timer);
       if (msg.error) p.reject(new Error(msg.error));
       else p.resolve(msg.result);
+    } else if (msg.type === 'naklios:tasks:due' && Array.isArray(msg.tasks)) {
+      // The host's clock found due tasks for this app; claim them with experimental_tasks.claim().
+      taskDueHandlers.forEach(function (fn) { try { fn(msg.tasks); } catch (_) {} });
     } else if (msg.type === 'naklios:rpc:waiting' && msg.requestId) {
       // The host holds this call until the person answers a prompt; the safety clock stops.
       var w = pendingRpc.get(msg.requestId);
@@ -927,6 +932,25 @@
       update: function (id, data, options) {
         if (!inNakliOS) return false;
         return send('naklios:widgets:update', { id: String(id || ''), data: data === undefined ? null : data, persist: !options || options.persist !== false }) !== false;
+      },
+    },
+    // Durable tasks (sys/durable/tasks.mjs): the host stores each task before it answers, so work an app
+    // checkpoints survives a reload, a crash or a closed window. Claim due tasks, run one step, commit
+    // the next state. Scoped to the calling app. Standalone: rejects; onDue never fires.
+    experimental_tasks: {
+      submit: function (task) {
+        task = task || {};
+        return rpc('naklios:tasks:submit', { kind: task.kind, taskRequestId: task.requestId, input: task.input, label: task.label, until: task.until, notify: task.notify });
+      },
+      claim: function (options) { options = options || {}; return rpc('naklios:tasks:claim', { max: options.max, kinds: options.kinds }); },
+      commit: function (id, lease, outcome) { return rpc('naklios:tasks:commit', { id: id, lease: lease, outcome: outcome || {} }); },
+      get: function (id) { return rpc('naklios:tasks:get', { id: id }); },
+      list: function (options) { options = options || {}; return rpc('naklios:tasks:list', { state: options.state }); },
+      cancel: function (id) { return rpc('naklios:tasks:cancel', { id: id }); },
+      onDue: function (fn) {
+        if (typeof fn !== 'function') return function () {};
+        taskDueHandlers.add(fn);
+        return function () { taskDueHandlers.delete(fn); };
       },
     },
     experimental_skills: {
