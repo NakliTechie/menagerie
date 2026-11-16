@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=f8ef6defba95383e36d0155a48d661c37091e9f8bded15686a06f04271d229ed — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=5e11e4fca3f9de6fe6695df7a77dd99a42830854df08eab9e2c5c40bd1d37c24 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -198,6 +198,11 @@
     experimental_tex: false,
     // experimental_web: this app may search the web and read pages through the host.
     experimental_web: false,
+    // experimental_aiReasoning: the selected model streams its reasoning beside the reply
+    // (chunks carry delta.reasoning_content), and experimental_thinking may switch it.
+    experimental_aiReasoning: false,
+    // experimental_aiVision: agent requests may carry image parts (OpenAI image_url, data URL).
+    experimental_aiVision: false,
     // net: a sovereign egress backend (the user's own Worker or local bridge) is
     // configured + permitted, so naklios.net.fetch can reach cross-origin hosts the
     // browser blocks. Stays false until a host advertises one — the SDK seam.
@@ -486,6 +491,11 @@
     if (options.agent === true) chatMsg.agent = true;
     if (options.tools != null) chatMsg.tools = options.tools;
     if (options.tool_choice != null) chatMsg.tool_choice = options.tool_choice;
+    // experimental_thinking: true or false asks the model to think before it answers, or not.
+    // Omitted leaves the provider's default. The reasoning streams as delta.reasoning_content.
+    if (options.experimental_thinking === true || options.experimental_thinking === false) {
+      chatMsg.thinking = options.experimental_thinking;
+    }
     // Models by role: 'build' or 'review' runs the request on that role's model (Settings → AI).
     // The host refuses an unknown role; omitted means the selected model.
     if (typeof options.agentRole === 'string') chatMsg.agentRole = options.agentRole;
@@ -502,6 +512,7 @@
     var stream = makeAiStream(options);
     if (options.stream === true) return stream;
     var content = '';
+    var reasoning = '';
     var finishReason = 'stop';
     var toolCalls = null;
     var usage = null;
@@ -511,6 +522,7 @@
       if (typeof chunk.naklios_truncate_at === 'number') truncateAt = chunk.naklios_truncate_at;
       var choice = chunk.choices && chunk.choices[0];
       if (choice && choice.delta && choice.delta.content) content += choice.delta.content;
+      if (choice && choice.delta && choice.delta.reasoning_content) reasoning += choice.delta.reasoning_content;
       if (choice && choice.delta && choice.delta.tool_calls) toolCalls = choice.delta.tool_calls;
       if (choice && choice.finish_reason) finishReason = choice.finish_reason;
       if (chunk.usage) usage = chunk.usage;
@@ -519,6 +531,7 @@
     }
     if (truncateAt != null && content.length > truncateAt) content = content.slice(0, truncateAt);
     var message = { role: 'assistant', content: content };
+    if (reasoning) message.reasoning_content = reasoning;
     if (toolCalls) message.tool_calls = toolCalls;
     return {
       id: 'naklios-local',
@@ -637,6 +650,8 @@
       capabilities.aiSearch = msg.aiSearch === true;
       capabilities.experimental_tex = msg.experimental_tex === true;
       capabilities.experimental_web = msg.experimental_web === true;
+      capabilities.experimental_aiReasoning = msg.experimental_aiReasoning === true;
+      capabilities.experimental_aiVision = msg.experimental_aiVision === true;
       capabilities.net = msg.net === true;
       capabilities.netBackend = typeof msg.netBackend === 'string' ? msg.netBackend : null;
       capabilities.review = msg.review === true;
@@ -668,6 +683,17 @@
           choices: [{
             index: 0,
             delta: { content: String(msg.token || '') },
+            finish_reason: null,
+          }],
+        });
+      } else if (msg.event === 'reasoning') {
+        aiRequest.deliver({
+          id: msg.requestId,
+          object: 'chat.completion.chunk',
+          model: msg.model || capabilities.aiModel || 'localmind',
+          choices: [{
+            index: 0,
+            delta: { content: '', reasoning_content: String(msg.token || '') },
             finish_reason: null,
           }],
         });
@@ -921,9 +947,24 @@
         if (!inNakliOS) return Promise.resolve([]);
         return rpc('naklios:commands:search', { query: String(query || '') });
       },
-      call: function (name, input) {
+      // options.ask === false: the host opens no dialog. A call that would need the person's answer returns
+      // { ok:false, code:'ECONSENT' } instead (scripts use this; hosts without it ignore the field and may ask).
+      call: function (name, input, options) {
         if (!inNakliOS) return Promise.reject(new Error('Not hosted — app commands are unavailable standalone'));
-        return rpc('naklios:commands:call', { name: String(name || ''), input: input || {} }, COMMAND_CALL_TIMEOUT_MS);
+        var payload = { name: String(name || ''), input: input || {} };
+        if (options && options.ask === false) payload.ask = false;
+        // options.notAfter (epoch ms): the host starts the command only before this time, so a caller that has
+        // stopped waiting (a script past its limit) cannot have a change land later. Older hosts ignore it.
+        if (options && typeof options.notAfter === 'number' && isFinite(options.notAfter)) payload.notAfter = options.notAfter;
+        // options.token: a name for the caller's unit of work; abandon(token) later makes the host start nothing more for it.
+        if (options && typeof options.token === 'string' && options.token) payload.token = options.token.slice(0, 200);
+        return rpc('naklios:commands:call', payload, COMMAND_CALL_TIMEOUT_MS);
+      },
+      // The caller stopped waiting for every call it made with this token (a script ended): the host starts none of
+      // them that has not started yet. A call already running finishes. Standalone: does nothing.
+      abandon: function (token) {
+        if (!inNakliOS || typeof token !== 'string' || !token) return false;
+        return send('naklios:commands:abandon', { token: token.slice(0, 200) }) !== false;
       },
     },
     experimental_widgets: {
