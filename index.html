@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=5e11e4fca3f9de6fe6695df7a77dd99a42830854df08eab9e2c5c40bd1d37c24 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=82879f1cd85b4ec02dc0c4fa39a45b635726a2fada7e2b26ef2942abf22d9ad3 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -910,6 +910,15 @@
           tool: tool, diff: diff, expires: options.expires,
           reversible: options.reversible === true,
         });
+      },
+      // Take back a card this app staged, for example after the person's own edit made the
+      // proposal stale. The host removes it only for the frame that staged it. Standalone
+      // there is no card, so it resolves with a fallback marker.
+      withdraw: function (proposalId) {
+        if (!inNakliOS) return Promise.resolve({ standalone: true, withdrawn: false });
+        if (!capabilities.review) return Promise.reject(new Error('NakliOS review is unavailable'));
+        if (typeof proposalId !== 'string' || !proposalId) return Promise.reject(new Error('naklios.review.withdraw needs a proposal id'));
+        return rpc('naklios:review:withdraw', { proposal_id: proposalId });
       },
       onDecision: function (cb) {
         if (typeof cb !== 'function') throw new Error('naklios.review.onDecision needs a callback');
