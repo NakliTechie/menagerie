@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=82879f1cd85b4ec02dc0c4fa39a45b635726a2fada7e2b26ef2942abf22d9ad3 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=de8d829387a754577cb46dfd51a8ab307be7c49d2107e39c9facd50544c9c766 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -198,6 +198,8 @@
     experimental_tex: false,
     // experimental_web: this app may search the web and read pages through the host.
     experimental_web: false,
+    // experimental_auth: the outside-account providers this app may sign in to through the host (['google']).
+    experimental_auth: [],
     // experimental_aiReasoning: the selected model streams its reasoning beside the reply
     // (chunks carry delta.reasoning_content), and experimental_thinking may switch it.
     experimental_aiReasoning: false,
@@ -650,6 +652,7 @@
       capabilities.aiSearch = msg.aiSearch === true;
       capabilities.experimental_tex = msg.experimental_tex === true;
       capabilities.experimental_web = msg.experimental_web === true;
+      capabilities.experimental_auth = Array.isArray(msg.experimental_auth) ? msg.experimental_auth.filter(function (p) { return typeof p === 'string'; }) : [];
       capabilities.experimental_aiReasoning = msg.experimental_aiReasoning === true;
       capabilities.experimental_aiVision = msg.experimental_aiVision === true;
       capabilities.net = msg.net === true;
@@ -833,13 +836,13 @@
                 msg.type === 'naklios:rag:reply' || msg.type === 'naklios:net:reply' ||
                 msg.type === 'naklios:tex:reply' || msg.type === 'naklios:web:reply' ||
                 msg.type === 'naklios:skills:reply' || msg.type === 'naklios:ai:reply' ||
-                msg.type === 'naklios:tasks:reply' ||
+                msg.type === 'naklios:tasks:reply' || msg.type === 'naklios:auth:reply' ||
                 msg.type === 'naklios:browser:reply') && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
       if (!p) return;
       pendingRpc.delete(msg.requestId);
       if (p.timer) clearTimeout(p.timer);
-      if (msg.error) p.reject(new Error(msg.error));
+      if (msg.error) { var rpcErr = new Error(msg.error); if (msg.code) rpcErr.code = msg.code; p.reject(rpcErr); }
       else p.resolve(msg.result);
     } else if (msg.type === 'naklios:tasks:due' && Array.isArray(msg.tasks)) {
       // The host's clock found due tasks for this app; claim them with experimental_tasks.claim().
@@ -1262,6 +1265,35 @@
       fetch: function (url) {
         if (!inNakliOS || !capabilities.experimental_web) return Promise.reject(new Error('NakliOS page reading is unavailable to this app'));
         return rpc('naklios:web:fetch', { url: String(url || '') }, 120000);
+      },
+    },
+
+    // Sign-in to outside accounts. The host runs the provider's browser sign-in in its own window and asks the
+    // person once per app per scope set; the app gets a short-lived access token and calls the provider's API
+    // itself. Google first: scopes by short name ('gmail.modify', 'calendar.events') or full URL.
+    experimental_auth: {
+      // The providers this app may use; [] when none (standalone, or the app is not allowed).
+      providers: function () { return (capabilities.experimental_auth || []).slice(); },
+      // token({ provider, scopes }) -> { accessToken, expiresAt, scopes }. Call it from a click handler: Google's
+      // window needs the person's click, and without one the host shows a "Continue to Google" dialog first.
+      // Errors carry .code: ENOAUTH (not available), ENOGRANT (person declined), EDENIED (Google or the person
+      // refused a scope), ECANCELLED, EINVAL (unknown provider or scope), EGOOGLE.
+      token: function (opts) {
+        opts = opts || {};
+        var provider = opts.provider || 'google';
+        if (!inNakliOS || (capabilities.experimental_auth || []).indexOf(provider) < 0) {
+          var e = new Error(inNakliOS ? 'Sign-in to ' + provider + ' is not available to this app' : 'Not hosted — sign-in unavailable standalone');
+          e.code = 'ENOAUTH';
+          return Promise.reject(e);
+        }
+        // The person may take minutes on Google's screen; the host also stops this clock while its prompt is open.
+        return rpc('naklios:auth:token', { provider: provider, scopes: opts.scopes || [] }, 300000);
+      },
+      // Drop the tokens this app holds for the provider (a token only this app held is revoked at the provider).
+      revoke: function (provider) {
+        provider = provider || 'google';
+        if (!inNakliOS || (capabilities.experimental_auth || []).indexOf(provider) < 0) return Promise.resolve({ revoked: 0 });
+        return rpc('naklios:auth:revoke', { provider: provider });
       },
     },
 
