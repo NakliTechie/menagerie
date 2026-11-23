@@ -32,7 +32,7 @@
        no-op. See docs/naklios.md. -->
   <script>
 /* eslint-disable -- vendored naklios SDK: machine-managed, linted upstream in NakliTechie/nakliOS */
-/* naklios-sdk:begin ver=2 sha256=de8d829387a754577cb46dfd51a8ab307be7c49d2107e39c9facd50544c9c766 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=967e036b50df81c004a86a878c2a596e175b758806fe8d98d89cf606c091756e — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -175,6 +175,8 @@
     fsBackend: null,
     fsBoundedReads: false,
     fsRangeReads: false,
+    fsBoundedListing: false,
+    fsTypedRemoval: false,
     // system: this app is a same-origin system app (non-third-party).
     // sysFs: system-scoped filesystem is available — the whole store, not just
     // apps/<your-id>/. Only true for system apps with a connected backend.
@@ -626,6 +628,8 @@
       capabilities.fsBackend = typeof msg.fsBackend === 'string' ? msg.fsBackend : null;
       capabilities.fsBoundedReads = msg.fsBoundedReads === true;
       capabilities.fsRangeReads = msg.fsRangeReads === true;
+      capabilities.fsBoundedListing = msg.fsBoundedListing === true;
+      capabilities.fsTypedRemoval = msg.fsTypedRemoval === true;
       capabilities.system = msg.system === true;
       capabilities.sysFs = msg.sysFs === true;
       if (typeof msg.ai === 'boolean') capabilities.ai = msg.ai;
@@ -1025,6 +1029,8 @@
     },
     fs: {
       get supportsBoundedReads() { return capabilities.fsBoundedReads === true; },
+      get supportsBoundedListing() { return capabilities.fsBoundedListing === true; },
+      get supportsTypedRemoval() { return capabilities.fsTypedRemoval === true; },
       // All paths are app-relative (under apps/<your-id>/ in the host folder).
       // Returns Promises. Reject if no folder connected, permission denied,
       // or path tries to traverse.
@@ -1033,8 +1039,20 @@
       stat:       function (path)       { return rpc('naklios:fs:stat', fsPayload({ path: path })); },
       write:      function (path, data) { return rpc('naklios:fs:write', fsPayload({ path: path, data: data })); },
       append:     function (path, line) { return rpc('naklios:fs:append', fsPayload({ path: path, line: line })); },
-      list:       function (prefix)     { return rpc('naklios:fs:list', fsPayload({ prefix: prefix || '' })); },
-      delete:     function (path)       { return rpc('naklios:fs:delete', fsPayload({ path: path })); },
+      // list(prefix) returns every child name. list(prefix, { maxEntries, cursor }) returns one page,
+      // { entries, truncated, cursor, snapshotConsistent }, when supportsBoundedListing is true.
+      list:       function (prefix, options) {
+        var page = {};
+        if (options && options.maxEntries !== undefined) page.maxEntries = options.maxEntries;
+        if (options && options.cursor != null) page.cursor = options.cursor;
+        return rpc('naklios:fs:list', fsPayload(Object.assign({ prefix: prefix || '' }, page)));
+      },
+      // delete(path) removes a file or a whole directory. delete(path, { kind: 'dir' }) removes only an
+      // empty directory and { kind: 'non-dir' } only a file, when supportsTypedRemoval is true.
+      delete:     function (path, options) {
+        var extra = options && options.kind !== undefined ? { kind: options.kind } : {};
+        return rpc('naklios:fs:delete', fsPayload(Object.assign({ path: path }, extra)));
+      },
       exists:     function (path)       { return rpc('naklios:fs:exists', fsPayload({ path: path })); },
       // Watch an app-relative path or directory. Crate events are immediate;
       // Folder changes are detected by a lightweight host poll. Resolves to
